@@ -4,13 +4,29 @@ use bevy::render::render_asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
 use crate::config::*;
 use crate::pheromone::{PheromoneGrid, PheromoneOverlay};
+use crate::terrain::{WorldMap, marching_squares_mesh};
 
-/// Startup system: create the pheromone texture and spawn a full-screen sprite to display it
+/// Startup system: build the marching squares terrain mesh and spawn it at z=0.
+/// Must run after terrain_startup_system so WorldMap is available.
+pub fn setup_terrain_mesh(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    world_map: Res<WorldMap>,
+) {
+    let mesh = marching_squares_mesh(&world_map.density);
+    commands.spawn((
+        Mesh2d(meshes.add(mesh)),
+        MeshMaterial2d(materials.add(ColorMaterial::from(Color::srgb(0.25, 0.22, 0.18)))),
+        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)), // z=0: terrain is bottommost
+    ));
+}
+
+/// Startup system: create the pheromone overlay texture and spawn it at z=1 (above terrain).
 pub fn setup_pheromone_overlay(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
 ) {
-    // Create a blank RGBA texture of GRID_W x GRID_H
     let size = Extent3d {
         width: GRID_W as u32,
         height: GRID_H as u32,
@@ -19,33 +35,30 @@ pub fn setup_pheromone_overlay(
     let mut image = Image::new_fill(
         size,
         TextureDimension::D2,
-        &[0, 0, 0, 0], // RGBA: transparent black
+        &[0, 0, 0, 0],
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     );
-    // Make texture nearest-neighbor (no blurring of pixel grid)
     image.sampler = ImageSampler::nearest();
 
     let texture_handle = images.add(image);
 
-    // Spawn a full-screen sprite at z=0 (behind ants at z=1)
     commands.spawn((
         Sprite {
             image: texture_handle.clone(),
-            custom_size: Some(Vec2::new(WINDOW_W, WINDOW_H)), // stretch to fill window
+            custom_size: Some(Vec2::new(WINDOW_W, WINDOW_H)),
             ..default()
         },
-        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+        Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)), // z=1: above terrain mesh
     ));
 
-    // Insert PheromoneOverlay resource so pheromone_texture_update_system can use it
     commands.insert_resource(PheromoneOverlay {
         texture: texture_handle,
-        visible: true, // start with overlay visible
+        visible: true,
     });
 }
 
-/// Input system: toggle pheromone overlay on P key press
+/// Input system: toggle pheromone overlay on P key press.
 pub fn pheromone_overlay_toggle_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut overlay: ResMut<PheromoneOverlay>,
@@ -53,17 +66,23 @@ pub fn pheromone_overlay_toggle_system(
 ) {
     if keyboard.just_pressed(KeyCode::KeyP) {
         overlay.visible = !overlay.visible;
-        grid.dirty = true; // force texture refresh
+        grid.dirty = true;
     }
 }
 
-/// Plugin that registers rendering systems
+/// Plugin that registers rendering systems.
 pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_systems(Startup, setup_pheromone_overlay)
+            .add_systems(
+                Startup,
+                (
+                    setup_terrain_mesh.after(crate::terrain::terrain_startup_system),
+                    setup_pheromone_overlay,
+                ),
+            )
             .add_systems(Update, pheromone_overlay_toggle_system);
     }
 }

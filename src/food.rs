@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use rand::Rng;
 use crate::config::*;
 use crate::ant::{Ant, AntState};
-use crate::world::WorldMap;
+use crate::terrain::WorldMap;
 
 /// Food component: represents a food source with remaining units
 #[derive(Component)]
@@ -18,7 +18,6 @@ pub struct Nest;
 #[derive(Component)]
 pub struct FoodRespawnTimer {
     pub timer: Timer,
-    pub slot: usize, // which food slot this is (0..FOOD_SOURCE_COUNT)
 }
 
 /// Resource tracking total food collected and brought to nest
@@ -46,10 +45,16 @@ pub fn food_interaction_system(
         for (food_entity, mut food, food_transform) in food_query.iter_mut() {
             let food_pos = food_transform.translation.truncate();
 
+            // Skip already-depleted sources (despawn is deferred — units==0 means
+            // another ant already queued a despawn this frame).
+            if food.units == 0 {
+                continue;
+            }
+
             // Check if ant is within interaction radius
             if ant_pos.distance(food_pos) < FOOD_INTERACTION_RADIUS {
                 // Ant picks up 1 unit of food
-                food.units = food.units.saturating_sub(1);
+                food.units -= 1;
 
                 // Ant switches to Returning state
                 ant.state = AntState::Returning;
@@ -59,7 +64,6 @@ pub fn food_interaction_system(
                     commands.entity(food_entity).despawn();
                     commands.spawn(FoodRespawnTimer {
                         timer: Timer::from_seconds(FOOD_RESPAWN_DELAY, TimerMode::Once),
-                        slot: 0, // slot index doesn't matter for single respawn
                     });
                 }
 
@@ -129,7 +133,7 @@ pub fn food_respawn_system(
             let cell_idx = world_map.open_cells[rng.gen_range(0..world_map.open_cells.len())];
             let gx = cell_idx % GRID_W;
             let gy = cell_idx / GRID_W;
-            let pos = crate::world::grid_to_world(gx, gy);
+            let pos = crate::terrain::grid_to_world(gx, gy);
 
             spawn_food(&mut commands, &mut meshes, &mut materials, pos);
         }
@@ -149,7 +153,7 @@ pub fn spawn_food(
         },
         Mesh2d(meshes.add(Circle::new(8.0))),
         MeshMaterial2d(materials.add(ColorMaterial::from(Color::srgb(0.1, 0.9, 0.1)))),
-        Transform::from_translation(pos.extend(2.0)), // z=2 above pheromone texture
+        Transform::from_translation(pos.extend(3.0)), // z=3: above terrain, pheromone, ants
     ));
 }
 
@@ -164,7 +168,7 @@ pub fn spawn_nest(
         Nest,
         Mesh2d(meshes.add(Circle::new(18.0))),
         MeshMaterial2d(materials.add(ColorMaterial::from(Color::srgb(0.55, 0.27, 0.07)))),
-        Transform::from_translation(pos.extend(2.0)), // z=2 above pheromone texture
+        Transform::from_translation(pos.extend(3.0)), // z=3: above terrain, pheromone, ants
     ));
 }
 

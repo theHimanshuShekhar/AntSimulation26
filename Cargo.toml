@@ -3,6 +3,12 @@ name = "ant_simulation"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+dev = [
+    "bevy/dynamic_linking",
+    "bevy/file_watcher",
+]
+
 [dependencies]
 bevy = { version = "0.15", default-features = false, features = [
     "bevy_winit",
