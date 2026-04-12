@@ -218,17 +218,23 @@ pub fn generate_terrain(rng: &mut impl Rng) -> WorldMap {
     while let Some(i) = queue.pop_front() {
         let iy = i / GRID_W;
         let ix = i % GRID_W;
-        for (nx, ny) in [
-            (ix.saturating_sub(1), iy),
-            ((ix + 1).min(GRID_W - 1), iy),
-            (ix, iy.saturating_sub(1)),
-            (ix, (iy + 1).min(GRID_H - 1)),
-        ] {
-            let ni = ny * GRID_W + nx;
-            if !walls[ni] && !reachable[ni] {
-                reachable[ni] = true;
-                queue.push_back(ni);
-            }
+        // Explicit bounds checks avoid re-pushing the boundary cell as its own neighbor
+        // (which saturating_sub/min would do when ix==0 or iy==0).
+        if ix > 0 {
+            let ni = iy * GRID_W + (ix - 1);
+            if !walls[ni] && !reachable[ni] { reachable[ni] = true; queue.push_back(ni); }
+        }
+        if ix + 1 < GRID_W {
+            let ni = iy * GRID_W + (ix + 1);
+            if !walls[ni] && !reachable[ni] { reachable[ni] = true; queue.push_back(ni); }
+        }
+        if iy > 0 {
+            let ni = (iy - 1) * GRID_W + ix;
+            if !walls[ni] && !reachable[ni] { reachable[ni] = true; queue.push_back(ni); }
+        }
+        if iy + 1 < GRID_H {
+            let ni = (iy + 1) * GRID_W + ix;
+            if !walls[ni] && !reachable[ni] { reachable[ni] = true; queue.push_back(ni); }
         }
     }
 
