@@ -9,7 +9,6 @@ mod render;
 use bevy::prelude::*;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use rand::Rng;
-use std::collections::HashSet;
 use config::*;
 use ant::{Ant, AntState, Colony};
 use food::{spawn_food, spawn_nest, FoodAssets, FoodScore};
@@ -116,7 +115,7 @@ fn spawn_nest_and_food(
 
     let source = if food_candidates.is_empty() { &world_map.open_cells } else { &food_candidates };
 
-    let mut occupied: HashSet<usize> = HashSet::new();
+    let mut occupied = vec![false; GRID_W * GRID_H];
 
     for _ in 0..FOOD_SOURCE_COUNT {
         if source.is_empty() {
@@ -130,7 +129,6 @@ fn spawn_nest_and_food(
 
         // Scatter FOOD_CLUSTER_SIZE items around the center
         for _ in 0..FOOD_CLUSTER_SIZE {
-            let mut placed = false;
             for _ in 0..10 {
                 let angle = rng.gen::<f32>() * std::f32::consts::TAU;
                 let radius = rng.gen::<f32>() * FOOD_CLUSTER_RADIUS;
@@ -139,16 +137,14 @@ fn spawn_nest_and_food(
 
                 if let Some((gx, gy)) = terrain::world_to_grid(candidate) {
                     let cell_idx = terrain::idx(gx, gy);
-                    if !world_map.walls[cell_idx] && !occupied.contains(&cell_idx) {
-                        occupied.insert(cell_idx);
+                    if !world_map.walls[cell_idx] && !occupied[cell_idx] {
+                        occupied[cell_idx] = true;
                         let pos = terrain::grid_to_world(gx, gy);
                         spawn_food(&mut commands, &food_assets, pos);
-                        placed = true;
                         break;
                     }
                 }
             }
-            let _ = placed;
         }
     }
 
