@@ -1,5 +1,6 @@
 mod config;
-mod world;
+mod noise;
+mod terrain;
 mod pheromone;
 mod ant;
 mod food;
@@ -11,21 +12,33 @@ use rand::Rng;
 use config::*;
 use ant::{Ant, AntState};
 use food::{spawn_food, spawn_nest, FoodScore};
-use world::WorldMap;
+use terrain::WorldMap;
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Ant Simulation".into(),
-                resolution: (WINDOW_W, WINDOW_H).into(),
-                resizable: false,
-                ..default()
-            }),
+    build_and_run();
+}
+
+fn build_and_run() {
+    let default_plugins = DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "Ant Simulation".into(),
+            resolution: (WINDOW_W, WINDOW_H).into(),
+            resizable: false,
             ..default()
-        }))
+        }),
+        ..default()
+    });
+
+    #[cfg(feature = "dev")]
+    let default_plugins = default_plugins.set(AssetPlugin {
+        watch_for_changes_override: Some(true),
+        ..default()
+    });
+
+    App::new()
+        .add_plugins(default_plugins)
         .add_plugins((
-            world::WorldPlugin,
+            terrain::WorldPlugin,
             pheromone::PheromonePlugin,
             ant::AntPlugin,
             food::FoodPlugin,
@@ -36,7 +49,7 @@ fn main() {
             Startup,
             (
                 spawn_camera,
-                spawn_nest_and_food.after(world::cave_startup_system),
+                spawn_nest_and_food.after(terrain::terrain_startup_system),
                 spawn_ants.after(spawn_nest_and_food),
                 setup_score_ui,
                 setup_fps_ui,
@@ -58,27 +71,39 @@ fn spawn_nest_and_food(
 ) {
     let mut rng = rand::thread_rng();
 
-    // Pick a random open cell for the nest
-    let nest_pos = if !world_map.open_cells.is_empty() {
-        let idx = world_map.open_cells[rng.gen_range(0..world_map.open_cells.len())];
-        let gx = idx % GRID_W;
-        let gy = idx / GRID_W;
-        world::grid_to_world(gx, gy)
-    } else {
-        Vec2::ZERO
-    };
+    // Nest always spawns at world center — the center exclusion zone in cave generation
+    // guarantees this area is always wall-free.
+    let nest_pos = Vec2::ZERO;
+    let nest_grid_x = GRID_W / 2;
+    let nest_grid_y = GRID_H / 2;
 
     spawn_nest(&mut commands, &mut meshes, &mut materials, nest_pos);
 
-    // Spawn initial food sources at random open cells
+    // Spawn initial food sources at open cells that are far enough from the nest
+    let food_candidates: Vec<usize> = world_map
+        .open_cells
+        .iter()
+        .copied()
+        .filter(|&cell_idx| {
+            let gx = cell_idx % GRID_W;
+            let gy = cell_idx / GRID_W;
+            let dx = gx as i32 - nest_grid_x as i32;
+            let dy = gy as i32 - nest_grid_y as i32;
+            let dist = ((dx * dx + dy * dy) as f32).sqrt() as usize;
+            dist >= FOOD_MIN_NEST_DIST_CELLS
+        })
+        .collect();
+
+    let source = if food_candidates.is_empty() { &world_map.open_cells } else { &food_candidates };
+
     for _ in 0..FOOD_SOURCE_COUNT {
-        if world_map.open_cells.is_empty() {
+        if source.is_empty() {
             break;
         }
-        let idx = world_map.open_cells[rng.gen_range(0..world_map.open_cells.len())];
-        let gx = idx % GRID_W;
-        let gy = idx / GRID_W;
-        let pos = world::grid_to_world(gx, gy);
+        let cell_idx = source[rng.gen_range(0..source.len())];
+        let gx = cell_idx % GRID_W;
+        let gy = cell_idx / GRID_W;
+        let pos = terrain::grid_to_world(gx, gy);
         spawn_food(&mut commands, &mut meshes, &mut materials, pos);
     }
 

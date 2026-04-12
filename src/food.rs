@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use rand::Rng;
 use crate::config::*;
 use crate::ant::{Ant, AntState};
-use crate::world::WorldMap;
+use crate::terrain::WorldMap;
 
 /// Food component: represents a food source with remaining units
 #[derive(Component)]
@@ -129,7 +129,7 @@ pub fn food_respawn_system(
             let cell_idx = world_map.open_cells[rng.gen_range(0..world_map.open_cells.len())];
             let gx = cell_idx % GRID_W;
             let gy = cell_idx / GRID_W;
-            let pos = crate::world::grid_to_world(gx, gy);
+            let pos = crate::terrain::grid_to_world(gx, gy);
 
             spawn_food(&mut commands, &mut meshes, &mut materials, pos);
         }

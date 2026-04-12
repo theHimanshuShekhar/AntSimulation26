@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use rand::{Rng, SeedableRng};
 use crate::config::*;
 use crate::pheromone::{PheromoneGrid, PheromoneKind};
-use crate::world::WorldMap;
+use crate::terrain::WorldMap;
 
 /// Ant state: either searching for food or returning to nest
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -18,31 +18,58 @@ pub struct Ant {
     pub state: AntState,
 }
 
-/// Staging buffer for ant pheromone deposits (parallel-safe writes)
+/// Staging buffer for ant pheromone deposits (parallel-safe writes).
+/// Tuple: (grid_idx, kind, amount, trail_direction)
 #[derive(Resource, Default)]
-pub struct AntDeposits(pub Vec<(usize, PheromoneKind, f32)>);
+pub struct AntDeposits(pub Vec<(usize, PheromoneKind, f32, Vec2)>);
 
-/// Sample pheromone sensors at three positions: left, ahead, right
-fn sample_sensors(
-    pos: Vec2,
-    angle: f32,
-    kind: PheromoneKind,
-    grid: &PheromoneGrid,
-) -> (f32, f32, f32) {
-    let left_angle = angle - SENSOR_ANGLE;
-    let ahead_angle = angle;
-    let right_angle = angle + SENSOR_ANGLE;
-
-    let sample_at = |a: f32| -> f32 {
-        let sensor_pos = pos + Vec2::new(a.cos(), a.sin()) * SENSOR_DIST;
-        if let Some((gx, gy)) = crate::world::world_to_grid(sensor_pos) {
-            grid.sample(crate::world::idx(gx, gy), kind)
-        } else {
-            0.0
-        }
+/// Score a single pheromone sensor position using both intensity and trail direction.
+///
+/// The score combines:
+///   - base intensity (20% weight even with zero alignment)
+///   - directional alignment: how well the stored trail direction points toward this sensor
+///
+/// This means an ant approaching a trail from the correct end scores high; approaching
+/// from the wrong end scores near the baseline, preventing sharp 180° reversals while
+/// still preferring correctly-oriented trail segments.
+fn score_sensor(ant_pos: Vec2, sensor_pos: Vec2, kind: PheromoneKind, grid: &PheromoneGrid) -> f32 {
+    let Some((gx, gy)) = crate::terrain::world_to_grid(sensor_pos) else {
+        return 0.0;
     };
+    let idx = crate::terrain::idx(gx, gy);
+    let intensity = grid.sample(idx, kind);
+    if intensity < 0.001 {
+        return 0.0;
+    }
+    let trail_dir = grid.sample_dir(idx, kind);
+    if trail_dir.length_squared() < 1e-6 {
+        // No direction recorded yet — fall back to raw intensity
+        return intensity;
+    }
+    // Vector from ant toward this sensor position
+    let to_sensor = (sensor_pos - ant_pos).normalize_or_zero();
+    // alignment ∈ [-1, 1]: +1 = trail direction perfectly matches heading toward sensor
+    let alignment = trail_dir.dot(to_sensor);
+    // Map to [0.2, 1.0] so even opposing trails contribute 20% of intensity
+    intensity * (0.2 + 0.8 * ((alignment + 1.0) * 0.5))
+}
 
-    (sample_at(left_angle), sample_at(ahead_angle), sample_at(right_angle))
+/// Score pheromone sensors at three positions: (left, ahead, right)
+fn score_sensors(pos: Vec2, angle: f32, kind: PheromoneKind, grid: &PheromoneGrid) -> (f32, f32, f32) {
+    let sensor_pos = |a: f32| pos + Vec2::new(a.cos(), a.sin()) * SENSOR_DIST;
+    (
+        score_sensor(pos, sensor_pos(angle - SENSOR_ANGLE), kind, grid),
+        score_sensor(pos, sensor_pos(angle),                kind, grid),
+        score_sensor(pos, sensor_pos(angle + SENSOR_ANGLE), kind, grid),
+    )
+}
+
+/// Returns true if the given world position is inside a wall or out of bounds
+fn is_wall(pos: Vec2, world_map: &WorldMap) -> bool {
+    match crate::terrain::world_to_grid(pos) {
+        Some((gx, gy)) => world_map.walls[crate::terrain::idx(gx, gy)],
+        None => true, // out of bounds counts as wall
+    }
 }
 
 /// Handle wall and boundary collisions
@@ -62,14 +89,20 @@ fn handle_collision(old_pos: Vec2, new_pos: Vec2, angle: &mut f32, world_map: &W
         pos.y = pos.y.clamp(-half_h + 5.0, half_h - 5.0);
     }
 
-    // Wall collision: if new position is in a wall, stay at old position and bounce
-    if let Some((gx, gy)) = crate::world::world_to_grid(pos) {
-        let wall_idx = crate::world::idx(gx, gy);
-        if world_map.walls[wall_idx] {
-            // Bounce: flip angle and return old position
-            *angle += std::f32::consts::PI + (rand::random::<f32>() - 0.5) * 0.5;
-            return old_pos;
-        }
+    // Check ant footprint: center + 4 cardinal probes at collision radius.
+    // Grid cells are 5px wide; a 4px radius ensures the ant never visually
+    // overlaps a wall cell even when its center is adjacent to one.
+    let r = 4.0_f32;
+    let hit = is_wall(pos, world_map)
+        || is_wall(pos + Vec2::new( r,  0.0), world_map)
+        || is_wall(pos + Vec2::new(-r,  0.0), world_map)
+        || is_wall(pos + Vec2::new( 0.0,  r), world_map)
+        || is_wall(pos + Vec2::new( 0.0, -r), world_map);
+
+    if hit {
+        // Reverse direction with some randomness so the ant escapes the wall
+        *angle += std::f32::consts::PI + (rand::random::<f32>() - 0.5) * 1.0;
+        return old_pos;
     }
 
     pos
@@ -120,32 +153,32 @@ pub fn ant_behavior_system(
             AntState::Returning => PheromoneKind::Home,
         };
 
-        // 2. Sample 3 sensors ahead
-        let (left, ahead, right) = sample_sensors(pos, ant.angle, follow_kind, &pheromone_grid);
+        // 2. Score 3 sensors — combines intensity with directional alignment
+        let (left, ahead, right) = score_sensors(pos, ant.angle, follow_kind, &pheromone_grid);
 
-        // 3. Add noise to sensor readings (~10% random weight)
-        let noise_l = rng.gen::<f32>() * 0.1;
-        let noise_a = rng.gen::<f32>() * 0.1;
-        let noise_r = rng.gen::<f32>() * 0.1;
-        let left = left + noise_l;
-        let ahead = ahead + noise_a;
-        let right = right + noise_r;
+        // 3. Weighted follow: probability of following pheromone scales with total signal strength.
+        //    When signal is absent, fall back to a pure random walk.
+        let total_signal = left + ahead + right;
+        let follow_prob = (total_signal * PHEROMONE_FOLLOW_WEIGHT).min(1.0);
+        let follow_pheromone = rng.gen::<f32>() < follow_prob;
 
-        // 4. Steer based on sensors
-        let turn = if ahead > left && ahead > right {
-            0.0 // go straight
-        } else if left > right {
-            -SENSOR_ANGLE * 0.5 // turn left
-        } else if right > left {
-            SENSOR_ANGLE * 0.5 // turn right
+        // 4. Steer based on whether ant chose to follow pheromone or random walk
+        let turn = if follow_pheromone {
+            // Steer toward the strongest sensor direction
+            if ahead >= left && ahead >= right {
+                0.0 // go straight
+            } else if left > right {
+                -SENSOR_ANGLE * 0.5 // turn left
+            } else {
+                SENSOR_ANGLE * 0.5 // turn right
+            }
         } else {
-            // Equal or no signal: random walk
-            let gaussian_noise = gaussian_noise(rng) * ANT_TURN_NOISE;
-            gaussian_noise
+            // No signal (or chance miss): pure random walk
+            gaussian_noise(rng) * ANT_TURN_NOISE
         };
 
-        // 5. Apply gaussian angle noise always (even when following trail)
-        let base_noise = gaussian_noise(rng) * ANT_TURN_NOISE * 0.3;
+        // 5. Small base noise always applied to prevent perfectly straight paths
+        let base_noise = gaussian_noise(rng) * ANT_TURN_NOISE * 0.15;
         ant.angle += turn + base_noise;
 
         // 6. If returning and no home signal, add slight bias toward nest (0,0)
@@ -169,15 +202,19 @@ pub fn ant_behavior_system(
         transform.translation = new_pos.extend(1.0); // z=1 so ants render above texture
         transform.rotation = Quat::from_rotation_z(ant.angle);
 
-        // 9. Deposit pheromone at current position
-        if let Some((gx, gy)) = crate::world::world_to_grid(new_pos) {
-            let grid_idx = crate::world::idx(gx, gy);
+        // 9. Deposit pheromone at current position.
+        //    Trail direction = reverse of ant's movement so followers travel back along the path.
+        //    e.g. ant moving east → deposit points west (back toward where it came from).
+        if let Some((gx, gy)) = crate::terrain::world_to_grid(new_pos) {
+            let grid_idx = crate::terrain::idx(gx, gy);
             if !world_map.walls[grid_idx] {
                 let deposit_kind = match ant.state {
                     AntState::Searching => PheromoneKind::Home,
                     AntState::Returning => PheromoneKind::Food,
                 };
-                deposits.0.push((grid_idx, deposit_kind, DEPOSIT_STRENGTH));
+                // Reverse of movement direction = direction back along the trail
+                let trail_dir = Vec2::new(-ant.angle.cos(), -ant.angle.sin());
+                deposits.0.push((grid_idx, deposit_kind, DEPOSIT_STRENGTH, trail_dir));
             }
         }
     }
@@ -188,8 +225,8 @@ pub fn ant_deposit_flush_system(
     mut grid: ResMut<PheromoneGrid>,
     deposits: Res<AntDeposits>,
 ) {
-    for &(idx, kind, amount) in &deposits.0 {
-        grid.deposit(idx, kind, amount);
+    for &(idx, kind, amount, dir) in &deposits.0 {
+        grid.deposit(idx, kind, amount, dir);
     }
 }
 
