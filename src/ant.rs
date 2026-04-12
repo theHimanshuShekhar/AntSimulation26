@@ -202,7 +202,10 @@ pub fn ant_behavior_system(
         let wander_w = 1.0 - (total_signal * PHEROMONE_FOLLOW_WEIGHT).min(PHEROMONE_FOLLOW_MAX);
         let wander = wander_w * WANDER_WEIGHT * gaussian_noise(rng) * ANT_TURN_NOISE;
 
-        // 4. Pheromone force: continuous angle delta toward strongest sensor
+        // 4. Pheromone force: continuous angle delta toward strongest sensor.
+        //    Tie-break: when left == right (and both < ahead), always turn right (+SENSOR_ANGLE).
+        //    This is an intentional asymmetry — ants consistently resolve equal-signal situations
+        //    by turning right. Acceptable for simulation purposes; not a behavioural bug.
         let phero_delta: f32 = if ahead >= left && ahead >= right {
             0.0
         } else if left > right {
