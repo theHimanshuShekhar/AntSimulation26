@@ -18,7 +18,6 @@ pub struct Nest;
 #[derive(Component)]
 pub struct FoodRespawnTimer {
     pub timer: Timer,
-    pub slot: usize, // which food slot this is (0..FOOD_SOURCE_COUNT)
 }
 
 /// Resource tracking total food collected and brought to nest
@@ -46,10 +45,16 @@ pub fn food_interaction_system(
         for (food_entity, mut food, food_transform) in food_query.iter_mut() {
             let food_pos = food_transform.translation.truncate();
 
+            // Skip already-depleted sources (despawn is deferred — units==0 means
+            // another ant already queued a despawn this frame).
+            if food.units == 0 {
+                continue;
+            }
+
             // Check if ant is within interaction radius
             if ant_pos.distance(food_pos) < FOOD_INTERACTION_RADIUS {
                 // Ant picks up 1 unit of food
-                food.units = food.units.saturating_sub(1);
+                food.units -= 1;
 
                 // Ant switches to Returning state
                 ant.state = AntState::Returning;
@@ -59,7 +64,6 @@ pub fn food_interaction_system(
                     commands.entity(food_entity).despawn();
                     commands.spawn(FoodRespawnTimer {
                         timer: Timer::from_seconds(FOOD_RESPAWN_DELAY, TimerMode::Once),
-                        slot: 0, // slot index doesn't matter for single respawn
                     });
                 }
 

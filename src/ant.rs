@@ -123,8 +123,31 @@ fn handle_collision(old_pos: Vec2, new_pos: Vec2, angle: &mut f32, world_map: &W
         || is_wall(pos + Vec2::new( 0.0, -r), world_map);
 
     if hit {
-        // Reverse direction with some randomness so the ant escapes the wall
-        *angle += std::f32::consts::PI + (rand::random::<f32>() - 0.5) * 1.0;
+        use std::f32::consts::PI;
+        let probe_dist = r * 3.0; // 12px — enough to clear one grid cell
+
+        // Try the standard PI-reverse + noise first, then random fallbacks.
+        // This ensures we never commit to an angle that immediately re-hits a wall,
+        // which is what causes ants to appear frozen with no pheromone nearby.
+        for attempt in 0..8u32 {
+            let try_angle = if attempt == 0 {
+                *angle + PI + (rand::random::<f32>() - 0.5) * 1.0
+            } else {
+                rand::random::<f32>() * 2.0 * PI
+            };
+            let probe = old_pos + Vec2::new(try_angle.cos(), try_angle.sin()) * probe_dist;
+            let clear = !is_wall(probe, world_map)
+                && !is_wall(probe + Vec2::new( r,  0.0), world_map)
+                && !is_wall(probe + Vec2::new(-r,  0.0), world_map)
+                && !is_wall(probe + Vec2::new( 0.0,  r), world_map)
+                && !is_wall(probe + Vec2::new( 0.0, -r), world_map);
+            if clear {
+                *angle = try_angle;
+                return old_pos;
+            }
+        }
+        // Last resort: plain reverse (only in extremely tight corners)
+        *angle += PI;
         return old_pos;
     }
 
