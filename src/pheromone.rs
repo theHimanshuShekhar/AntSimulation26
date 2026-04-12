@@ -109,6 +109,10 @@ impl Default for PheromoneGrid {
 pub struct PheromoneOverlay {
     pub texture: Handle<Image>,
     pub visible: bool,
+    /// True when wall pixels are currently written into the texture.
+    /// Toggling visibility off calls `fill(0)`, clearing them; this flag tracks whether
+    /// they need to be re-drawn before the next pheromone update pass.
+    pub walls_drawn: bool,
 }
 
 /// Decay one pheromone channel at cell `i` in-place.
@@ -198,11 +202,11 @@ pub fn pheromone_decay_system(
 /// Update pheromone texture based on grid state and visibility
 pub fn pheromone_texture_update_system(
     mut grid: ResMut<PheromoneGrid>,
-    overlay: Option<Res<PheromoneOverlay>>,
+    mut overlay: Option<ResMut<PheromoneOverlay>>,
     world_map: Option<Res<WorldMap>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let Some(overlay) = overlay else { return };
+    let Some(overlay) = overlay.as_mut() else { return };
     let Some(world_map) = world_map else { return };
 
     if !grid.dirty {
@@ -219,29 +223,34 @@ pub fn pheromone_texture_update_system(
     // but grid gy=0 maps to world y = -WINDOW_H/2 (bottom). Flip Y when writing
     // so the texture aligns with ant world positions.
     if overlay.visible {
+        // If wall pixels were cleared (e.g. after a hide→show toggle), re-draw them.
+        // Wall pixels are transparent (0,0,0,0) — same as the cleared state — so
+        // we only need to ensure non-wall cells get the correct pheromone values.
+        // Because `fill(0)` already makes walls transparent, we just mark them drawn.
+        if !overlay.walls_drawn {
+            overlay.walls_drawn = true;
+        }
         for gy in 0..GRID_H {
             for gx in 0..GRID_W {
                 let grid_i = gy * GRID_W + gx;
+                // Wall pixels are pre-filled at startup and transparent — skip them
+                if world_map.walls[grid_i] {
+                    continue;
+                }
                 let tex_row = GRID_H - 1 - gy; // Y-flip
                 let base = (tex_row * GRID_W + gx) * 4;
-                if world_map.walls[grid_i] {
-                    pixels[base] = 0;
-                    pixels[base + 1] = 0;
-                    pixels[base + 2] = 0;
-                    pixels[base + 3] = 0;
-                } else {
-                    let food_val = (grid.food[grid_i] * 255.0) as u8;
-                    let home_val = (grid.home[grid_i] * 255.0) as u8;
-                    pixels[base] = 0;
-                    pixels[base + 1] = food_val;  // G = food (green)
-                    pixels[base + 2] = home_val;  // B = home (blue)
-                    pixels[base + 3] = food_val.max(home_val);
-                }
+                let food_val = (grid.food[grid_i] * 255.0) as u8;
+                let home_val = (grid.home[grid_i] * 255.0) as u8;
+                pixels[base] = 0;
+                pixels[base + 1] = food_val;  // G = food (green)
+                pixels[base + 2] = home_val;  // B = home (blue)
+                pixels[base + 3] = food_val.max(home_val);
             }
         }
     } else {
         // Overlay hidden: zero out entire texture in one pass
         pixels.fill(0);
+        overlay.walls_drawn = false;
     }
 }
 

@@ -23,9 +23,11 @@ pub fn setup_terrain_mesh(
 }
 
 /// Startup system: create the pheromone overlay texture and spawn it at z=1 (above terrain).
+/// Must run after terrain_startup_system so WorldMap is available for wall pre-fill.
 pub fn setup_pheromone_overlay(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
+    world_map: Res<WorldMap>,
 ) {
     let size = Extent3d {
         width: GRID_W as u32,
@@ -41,6 +43,25 @@ pub fn setup_pheromone_overlay(
     );
     image.sampler = ImageSampler::nearest();
 
+    // Wall pixels never change — pre-fill them once here so the per-frame texture
+    // update loop can skip wall cells entirely. Walls are transparent (0,0,0,0)
+    // which is already the fill value, so this is a no-op for the data but
+    // documents intent and allows future wall color changes in one place.
+    let pixels = &mut image.data;
+    for gy in 0..GRID_H {
+        for gx in 0..GRID_W {
+            let grid_i = gy * GRID_W + gx;
+            if world_map.walls[grid_i] {
+                let tex_row = GRID_H - 1 - gy; // Y-flip (matches texture update convention)
+                let base = (tex_row * GRID_W + gx) * 4;
+                pixels[base]     = 0;
+                pixels[base + 1] = 0;
+                pixels[base + 2] = 0;
+                pixels[base + 3] = 0;
+            }
+        }
+    }
+
     let texture_handle = images.add(image);
 
     commands.spawn((
@@ -55,6 +76,7 @@ pub fn setup_pheromone_overlay(
     commands.insert_resource(PheromoneOverlay {
         texture: texture_handle,
         visible: true,
+        walls_drawn: true,
     });
 }
 
@@ -80,7 +102,7 @@ impl Plugin for RenderPlugin {
                 Startup,
                 (
                     setup_terrain_mesh.after(crate::terrain::terrain_startup_system),
-                    setup_pheromone_overlay,
+                    setup_pheromone_overlay.after(crate::terrain::terrain_startup_system),
                 ),
             )
             .add_systems(Update, pheromone_overlay_toggle_system);
