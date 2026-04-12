@@ -26,6 +26,25 @@ pub struct FoodScore {
     pub collected: u32,
 }
 
+/// Cached handles for food mesh and material — populated once at startup.
+#[derive(Resource)]
+pub struct FoodAssets {
+    pub mesh: Handle<Mesh>,
+    pub material: Handle<ColorMaterial>,
+}
+
+/// Startup system: create and cache food mesh/material handles.
+pub fn setup_food_assets(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    commands.insert_resource(FoodAssets {
+        mesh: meshes.add(Circle::new(8.0)),
+        material: materials.add(ColorMaterial::from(Color::srgb(0.1, 0.9, 0.1))),
+    });
+}
+
 /// Ant-Food interaction: when a Searching ant is within FOOD_INTERACTION_RADIUS of a Food entity,
 /// the ant picks up 1 unit of food and switches to Returning state. If the food source is depleted,
 /// it despawns and a respawn timer is spawned.
@@ -112,8 +131,7 @@ pub fn food_respawn_system(
     mut commands: Commands,
     mut timer_query: Query<(Entity, &mut FoodRespawnTimer)>,
     world_map: Res<WorldMap>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    food_assets: Res<FoodAssets>,
     time: Res<Time>,
 ) {
     let mut rng = rand::thread_rng();
@@ -135,24 +153,21 @@ pub fn food_respawn_system(
             let gy = cell_idx / GRID_W;
             let pos = crate::terrain::grid_to_world(gx, gy);
 
-            spawn_food(&mut commands, &mut meshes, &mut materials, pos);
+            spawn_food(&mut commands, &food_assets, pos);
         }
     }
 }
 
-/// Helper function to spawn a Food entity at a given position
+/// Helper function to spawn a Food entity at a given position using cached handles.
 pub fn spawn_food(
     commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<ColorMaterial>,
+    assets: &FoodAssets,
     pos: Vec2,
 ) {
     commands.spawn((
-        Food {
-            units: FOOD_PER_SOURCE,
-        },
-        Mesh2d(meshes.add(Circle::new(8.0))),
-        MeshMaterial2d(materials.add(ColorMaterial::from(Color::srgb(0.1, 0.9, 0.1)))),
+        Food { units: FOOD_PER_SOURCE },
+        Mesh2d(assets.mesh.clone()),
+        MeshMaterial2d(assets.material.clone()),
         Transform::from_translation(pos.extend(3.0)), // z=3: above terrain, pheromone, ants
     ));
 }
@@ -177,13 +192,15 @@ pub struct FoodPlugin;
 
 impl Plugin for FoodPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(FoodScore::default()).add_systems(
-            Update,
-            (
-                food_interaction_system,
-                nest_interaction_system,
-                food_respawn_system,
-            ),
-        );
+        app.insert_resource(FoodScore::default())
+            .add_systems(Startup, setup_food_assets)
+            .add_systems(
+                Update,
+                (
+                    food_interaction_system,
+                    nest_interaction_system,
+                    food_respawn_system,
+                ),
+            );
     }
 }

@@ -12,7 +12,7 @@ use rand::Rng;
 use std::collections::HashSet;
 use config::*;
 use ant::{Ant, AntState, Colony};
-use food::{spawn_food, spawn_nest, FoodScore};
+use food::{spawn_food, spawn_nest, FoodAssets, FoodScore};
 use terrain::WorldMap;
 
 fn main() {
@@ -52,7 +52,9 @@ fn build_and_run() {
             Startup,
             (
                 spawn_camera,
-                spawn_nest_and_food.after(terrain::terrain_startup_system),
+                spawn_nest_and_food
+                    .after(terrain::terrain_startup_system)
+                    .after(food::setup_food_assets),
                 spawn_ants.after(spawn_nest_and_food),
                 setup_score_ui,
                 setup_fps_ui,
@@ -85,6 +87,7 @@ fn spawn_nest_and_food(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     world_map: Res<WorldMap>,
+    food_assets: Res<FoodAssets>,
 ) {
     let mut rng = rand::thread_rng();
 
@@ -139,7 +142,7 @@ fn spawn_nest_and_food(
                     if !world_map.walls[cell_idx] && !occupied.contains(&cell_idx) {
                         occupied.insert(cell_idx);
                         let pos = terrain::grid_to_world(gx, gy);
-                        spawn_food(&mut commands, &mut meshes, &mut materials, pos);
+                        spawn_food(&mut commands, &food_assets, pos);
                         placed = true;
                         break;
                     }
@@ -155,6 +158,13 @@ fn spawn_nest_and_food(
 
 #[derive(Resource)]
 pub struct NestPosition(pub Vec2);
+
+/// Cached handles for ant mesh and material — populated once at startup.
+#[derive(Resource)]
+pub struct AntAssets {
+    pub mesh: Handle<Mesh>,
+    pub material: Handle<ColorMaterial>,
+}
 
 fn spawn_ants(
     mut commands: Commands,
@@ -188,15 +198,18 @@ fn spawn_ants(
         ));
     }
 
+    commands.insert_resource(AntAssets {
+        mesh: ant_mesh,
+        material: searching_material,
+    });
     commands.insert_resource(Colony::new(ANT_COUNT));
 }
 
 fn ant_respawn_system(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut colony: ResMut<Colony>,
     nest_pos: Res<NestPosition>,
+    ant_assets: Res<AntAssets>,
     time: Res<Time>,
 ) {
     colony.respawn_timer += time.delta_secs();
@@ -211,12 +224,6 @@ fn ant_respawn_system(
     }
 
     let mut rng = rand::thread_rng();
-    let ant_mesh = meshes.add(Triangle2d::new(
-        Vec2::new(6.0, 0.0),
-        Vec2::new(-4.0, 3.0),
-        Vec2::new(-4.0, -3.0),
-    ));
-    let mat = materials.add(ColorMaterial::from(Color::srgb(0.6, 0.3, 0.1)));
 
     for _ in 0..to_spawn {
         let angle = rng.gen::<f32>() * std::f32::consts::TAU;
@@ -228,8 +235,8 @@ fn ant_respawn_system(
                 age: 0.0,
                 lifetime,
             },
-            Mesh2d(ant_mesh.clone()),
-            MeshMaterial2d(mat.clone()),
+            Mesh2d(ant_assets.mesh.clone()),
+            MeshMaterial2d(ant_assets.material.clone()),
             Transform::from_translation(nest_pos.0.extend(2.0))
                 .with_rotation(Quat::from_rotation_z(angle)),
         ));
