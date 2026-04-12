@@ -199,7 +199,7 @@ pub fn ant_behavior_system(
         // 8. Wall + boundary collision
         let new_pos = handle_collision(pos, new_pos, &mut ant.angle, &world_map);
 
-        transform.translation = new_pos.extend(1.0); // z=1 so ants render above texture
+        transform.translation = new_pos.extend(2.0); // z=2: above terrain and pheromone overlay
         transform.rotation = Quat::from_rotation_z(ant.angle);
 
         // 9. Deposit pheromone at current position.

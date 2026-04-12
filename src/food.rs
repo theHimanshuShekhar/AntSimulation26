@@ -149,7 +149,7 @@ pub fn spawn_food(
         },
         Mesh2d(meshes.add(Circle::new(8.0))),
         MeshMaterial2d(materials.add(ColorMaterial::from(Color::srgb(0.1, 0.9, 0.1)))),
-        Transform::from_translation(pos.extend(2.0)), // z=2 above pheromone texture
+        Transform::from_translation(pos.extend(3.0)), // z=3: above terrain, pheromone, ants
     ));
 }
 
@@ -164,7 +164,7 @@ pub fn spawn_nest(
         Nest,
         Mesh2d(meshes.add(Circle::new(18.0))),
         MeshMaterial2d(materials.add(ColorMaterial::from(Color::srgb(0.55, 0.27, 0.07)))),
-        Transform::from_translation(pos.extend(2.0)), // z=2 above pheromone texture
+        Transform::from_translation(pos.extend(3.0)), // z=3: above terrain, pheromone, ants
     ));
 }
 

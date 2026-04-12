@@ -142,7 +142,7 @@ fn spawn_ants(
             },
             Mesh2d(ant_mesh.clone()),
             MeshMaterial2d(searching_material.clone()),
-            Transform::from_translation(pos.extend(1.0))
+            Transform::from_translation(pos.extend(2.0)) // z=2: above terrain and pheromone overlay
                 .with_rotation(Quat::from_rotation_z(angle)),
         ));
     }
