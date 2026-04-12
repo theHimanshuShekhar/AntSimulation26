@@ -10,6 +10,7 @@ pub const GRID_H: usize = 144;
 pub const ANT_COUNT: usize = 2000;
 pub const ANT_SPEED: f32 = 80.0;          // pixels per second
 pub const ANT_TURN_NOISE: f32 = 0.26;     // radians ~15° gaussian noise per frame
+pub const PHEROMONE_FOLLOW_WEIGHT: f32 = 8.0; // scales signal strength → follow probability (signal * weight clamped to 1.0)
 pub const SENSOR_ANGLE: f32 = 0.52;       // radians ~30° sensor spread
 pub const SENSOR_DIST: f32 = 40.0;        // pixels ahead sensors are placed
 
@@ -26,8 +27,42 @@ pub const FOOD_INTERACTION_RADIUS: f32 = 8.0;  // pixels
 pub const NEST_INTERACTION_RADIUS: f32 = 20.0; // pixels
 pub const FOOD_RESPAWN_DELAY: f32 = 5.0;       // seconds
 
-// Cave generation
-pub const CAVE_INITIAL_WALL_CHANCE: f32 = 0.30; // probability cell starts as wall
-pub const CAVE_SMOOTH_ITERATIONS: usize = 4;
-pub const CAVE_BIRTH_LIMIT: usize = 5;    // >= N wall neighbors → become wall
-pub const CAVE_DEATH_LIMIT: usize = 3;    // < N wall neighbors → become open
+// Cave / terrain shared
+pub const CAVE_BORDER_THICKNESS: usize = 4; // grid cells thick on every edge (visible rock border)
+pub const CAVE_CENTER_EXCLUSION: usize = 35; // grid-cell radius around center always kept open
+
+// Legacy blob cave constants (used by world.rs — removed in Task 12 when world.rs is deleted)
+pub const CAVE_BLOB_COUNT_MIN: usize = 3;
+pub const CAVE_BLOB_COUNT_MAX: usize = 5;
+pub const CAVE_BLOB_RADIUS_MIN: f32 = 18.0;
+pub const CAVE_BLOB_RADIUS_MAX: f32 = 35.0;
+pub const CAVE_BLOB_NOISE: f32 = 7.0;
+pub const CAVE_SMOOTH_ITERATIONS: usize = 3;
+pub const CAVE_BIRTH_LIMIT: usize = 5;
+pub const CAVE_DEATH_LIMIT: usize = 2;
+
+// FBM terrain generation
+pub const FBM_LAYERS: usize = 6;
+pub const FBM_SCALE: f32 = 3.5;
+pub const FBM_LACUNARITY: f32 = 2.0;
+pub const FBM_PERSISTENCE: f32 = 0.5;
+pub const TERRAIN_ISO_LEVEL: f32 = 0.52;
+
+// Ant steering forces
+pub const WANDER_WEIGHT: f32 = 1.0;
+pub const PHEROMONE_WEIGHT: f32 = 2.5;
+pub const SEEK_WEIGHT: f32 = 1.2;
+pub const SEEK_RADIUS: f32 = 60.0;
+
+// Ant lifetime / population
+pub const ANT_LIFETIME_MIN: f32 = 30.0;
+pub const ANT_LIFETIME_MAX: f32 = 90.0;
+pub const ANT_RESPAWN_INTERVAL: f32 = 1.0;
+pub const ANT_RESPAWN_BATCH: usize = 20;
+
+// Food clustering
+pub const FOOD_CLUSTER_SIZE: usize = 8;
+pub const FOOD_CLUSTER_RADIUS: f32 = 20.0;
+
+// Minimum grid-cell distance between food spawns and the nest
+pub const FOOD_MIN_NEST_DIST_CELLS: usize = 30;
