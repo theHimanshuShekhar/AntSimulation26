@@ -22,6 +22,9 @@ pub struct PheromoneGrid {
     pub food_dir_x: Vec<f32>,
     pub food_dir_y: Vec<f32>,
     pub dirty: bool,
+    // Pre-allocated diffusion scratch buffers — avoids per-tick Vec allocation
+    scratch_home: Vec<f32>,
+    scratch_food: Vec<f32>,
 }
 
 impl PheromoneGrid {
@@ -35,6 +38,8 @@ impl PheromoneGrid {
             food_dir_x: vec![0.0; n],
             food_dir_y: vec![0.0; n],
             dirty: false,
+            scratch_home: vec![0.0; n],
+            scratch_food: vec![0.0; n],
         }
     }
 
@@ -134,8 +139,12 @@ pub fn pheromone_decay_system(
 
     // Optional diffusion: simple 1-step box blur (skips wall cells)
     if DIFFUSION_ENABLED {
-        let home_copy = grid.home.clone();
-        let food_copy = grid.food.clone();
+        // Copy current values into scratch buffers (no alloc — buffers pre-allocated in PheromoneGrid::new).
+        // Use indexed loop so the borrow checker can see scratch and live fields are disjoint.
+        for i in 0..GRID_W * GRID_H {
+            grid.scratch_home[i] = grid.home[i];
+            grid.scratch_food[i] = grid.food[i];
+        }
         for y in 1..GRID_H - 1 {
             for x in 1..GRID_W - 1 {
                 let i = y * GRID_W + x;
@@ -148,8 +157,8 @@ pub fn pheromone_decay_system(
                     y * GRID_W + (x - 1),
                     y * GRID_W + (x + 1),
                 ];
-                let sum_h: f32 = neighbors.iter().map(|&n| home_copy[n]).sum();
-                let sum_f: f32 = neighbors.iter().map(|&n| food_copy[n]).sum();
+                let sum_h: f32 = neighbors.iter().map(|&n| grid.scratch_home[n]).sum();
+                let sum_f: f32 = neighbors.iter().map(|&n| grid.scratch_food[n]).sum();
                 // Weighted average: 60% current, 40% neighbors average
                 grid.home[i] = (grid.home[i] * 0.6 + (sum_h / 4.0) * 0.4).min(1.0);
                 grid.food[i] = (grid.food[i] * 0.6 + (sum_f / 4.0) * 0.4).min(1.0);
