@@ -61,7 +61,7 @@ fn score_sensor(ant_pos: Vec2, sensor_pos: Vec2, kind: PheromoneKind, grid: &Phe
     };
     let idx = crate::terrain::idx(gx, gy);
     let intensity = grid.sample(idx, kind);
-    if intensity < 0.001 {
+    if intensity < PHEROMONE_ZERO_THRESHOLD {
         return 0.0;
     }
     let trail_dir = grid.sample_dir(idx, kind);
@@ -73,8 +73,8 @@ fn score_sensor(ant_pos: Vec2, sensor_pos: Vec2, kind: PheromoneKind, grid: &Phe
     let to_sensor = (sensor_pos - ant_pos).normalize_or_zero();
     // alignment ∈ [-1, 1]: +1 = trail direction perfectly matches heading toward sensor
     let alignment = trail_dir.dot(to_sensor);
-    // Map to [0.2, 1.0] so even opposing trails contribute 20% of intensity
-    intensity * (0.2 + 0.8 * ((alignment + 1.0) * 0.5))
+    // Map to [SENSOR_MIN_ALIGNMENT, 1.0] so even opposing trails contribute a floor of intensity
+    intensity * (SENSOR_MIN_ALIGNMENT + (1.0 - SENSOR_MIN_ALIGNMENT) * ((alignment + 1.0) * 0.5))
 }
 
 /// Score pheromone sensors at three positions: (left, ahead, right)
@@ -103,19 +103,19 @@ fn handle_collision(old_pos: Vec2, new_pos: Vec2, angle: &mut f32, world_map: &W
     let mut pos = new_pos;
 
     // World boundary bounce
-    if pos.x < -half_w + 5.0 || pos.x > half_w - 5.0 {
+    if pos.x < -half_w + ANT_BOUNDARY_MARGIN || pos.x > half_w - ANT_BOUNDARY_MARGIN {
         *angle = std::f32::consts::PI - *angle;
-        pos.x = pos.x.clamp(-half_w + 5.0, half_w - 5.0);
+        pos.x = pos.x.clamp(-half_w + ANT_BOUNDARY_MARGIN, half_w - ANT_BOUNDARY_MARGIN);
     }
-    if pos.y < -half_h + 5.0 || pos.y > half_h - 5.0 {
+    if pos.y < -half_h + ANT_BOUNDARY_MARGIN || pos.y > half_h - ANT_BOUNDARY_MARGIN {
         *angle = -*angle;
-        pos.y = pos.y.clamp(-half_h + 5.0, half_h - 5.0);
+        pos.y = pos.y.clamp(-half_h + ANT_BOUNDARY_MARGIN, half_h - ANT_BOUNDARY_MARGIN);
     }
 
     // Check ant footprint: center + 4 cardinal probes at collision radius.
-    // Grid cells are 5px wide; a 4px radius ensures the ant never visually
+    // Grid cells are 5px wide; ANT_COLLISION_RADIUS ensures the ant never visually
     // overlaps a wall cell even when its center is adjacent to one.
-    let r = 4.0_f32;
+    let r = ANT_COLLISION_RADIUS;
     let hit = is_wall(pos, world_map)
         || is_wall(pos + Vec2::new( r,  0.0), world_map)
         || is_wall(pos + Vec2::new(-r,  0.0), world_map)
@@ -124,7 +124,7 @@ fn handle_collision(old_pos: Vec2, new_pos: Vec2, angle: &mut f32, world_map: &W
 
     if hit {
         use std::f32::consts::PI;
-        let probe_dist = r * 3.0; // 12px — enough to clear one grid cell
+        let probe_dist = r * 3.0; // 3x radius — enough to clear one grid cell
 
         // Try the standard PI-reverse + noise first, then random fallbacks.
         // This ensures we never commit to an angle that immediately re-hits a wall,
@@ -205,7 +205,7 @@ pub fn ant_behavior_system(
 
         // 3. Wander force: Gaussian angle noise, attenuated when pheromone is strong
         let total_signal = left + ahead + right;
-        let wander_w = 1.0 - (total_signal * PHEROMONE_FOLLOW_WEIGHT).min(0.85);
+        let wander_w = 1.0 - (total_signal * PHEROMONE_FOLLOW_WEIGHT).min(PHEROMONE_FOLLOW_MAX);
         let wander = wander_w * WANDER_WEIGHT * gaussian_noise(rng) * ANT_TURN_NOISE;
 
         // 4. Pheromone force: continuous angle delta toward strongest sensor
@@ -251,7 +251,7 @@ pub fn ant_behavior_system(
         };
 
         // 6. Combine forces + small base noise to prevent perfectly straight paths
-        let base_noise = gaussian_noise(rng) * ANT_TURN_NOISE * 0.15;
+        let base_noise = gaussian_noise(rng) * ANT_TURN_NOISE * BASE_NOISE_FRACTION;
         ant.angle += wander + phero + seek + base_noise;
 
         // 7. Move forward

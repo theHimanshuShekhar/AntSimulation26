@@ -125,7 +125,7 @@ pub fn pheromone_decay_system(
         grid.home[i] *= DECAY_FACTOR;
         grid.home_dir_x[i] *= DECAY_FACTOR;
         grid.home_dir_y[i] *= DECAY_FACTOR;
-        if grid.home[i] < 0.001 {
+        if grid.home[i] < PHEROMONE_ZERO_THRESHOLD {
             grid.home[i] = 0.0;
             grid.home_dir_x[i] = 0.0;
             grid.home_dir_y[i] = 0.0;
@@ -134,7 +134,7 @@ pub fn pheromone_decay_system(
         grid.food[i] *= DECAY_FACTOR;
         grid.food_dir_x[i] *= DECAY_FACTOR;
         grid.food_dir_y[i] *= DECAY_FACTOR;
-        if grid.food[i] < 0.001 {
+        if grid.food[i] < PHEROMONE_ZERO_THRESHOLD {
             grid.food[i] = 0.0;
             grid.food_dir_x[i] = 0.0;
             grid.food_dir_y[i] = 0.0;
@@ -163,9 +163,9 @@ pub fn pheromone_decay_system(
                 ];
                 let sum_h: f32 = neighbors.iter().map(|&n| grid.scratch_home[n]).sum();
                 let sum_f: f32 = neighbors.iter().map(|&n| grid.scratch_food[n]).sum();
-                // Weighted average: 60% current, 40% neighbors average
-                grid.home[i] = (grid.home[i] * 0.6 + (sum_h / 4.0) * 0.4).min(1.0);
-                grid.food[i] = (grid.food[i] * 0.6 + (sum_f / 4.0) * 0.4).min(1.0);
+                // Weighted average: DIFFUSION_SELF_WEIGHT current, DIFFUSION_NEIGHBOR_WEIGHT neighbors
+                grid.home[i] = (grid.home[i] * DIFFUSION_SELF_WEIGHT + (sum_h / 4.0) * DIFFUSION_NEIGHBOR_WEIGHT).min(1.0);
+                grid.food[i] = (grid.food[i] * DIFFUSION_SELF_WEIGHT + (sum_f / 4.0) * DIFFUSION_NEIGHBOR_WEIGHT).min(1.0);
             }
         }
     }

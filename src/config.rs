@@ -56,3 +56,21 @@ pub const FOOD_CLUSTER_RADIUS: f32 = 20.0;
 
 // Minimum grid-cell distance between food spawns and the nest
 pub const FOOD_MIN_NEST_DIST_CELLS: usize = 30;
+
+// Ant collision / boundary
+pub const ANT_COLLISION_RADIUS: f32 = 4.0;   // footprint probe radius in pixels
+pub const ANT_BOUNDARY_MARGIN: f32 = 5.0;    // world-edge buffer in pixels
+
+// Ant steering tuning
+pub const PHEROMONE_FOLLOW_MAX: f32 = 0.85;  // max fraction of wander suppressed by signal
+pub const BASE_NOISE_FRACTION: f32 = 0.15;   // base noise scalar relative to wander weight
+
+// Sensor directional scoring
+pub const SENSOR_MIN_ALIGNMENT: f32 = 0.2;   // floor alignment contribution (prevents full suppression)
+
+// Pheromone diffusion blend
+pub const DIFFUSION_SELF_WEIGHT: f32 = 0.6;      // current cell weight in box-blur
+pub const DIFFUSION_NEIGHBOR_WEIGHT: f32 = 0.4;  // neighbor average weight in box-blur
+
+// Pheromone zero-floor threshold
+pub const PHEROMONE_ZERO_THRESHOLD: f32 = 0.001; // values below this snap to 0.0
