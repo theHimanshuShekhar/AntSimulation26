@@ -74,3 +74,11 @@ pub const DIFFUSION_NEIGHBOR_WEIGHT: f32 = 0.4;  // neighbor average weight in b
 
 // Pheromone zero-floor threshold
 pub const PHEROMONE_ZERO_THRESHOLD: f32 = 0.001; // values below this snap to 0.0
+
+// Ant wall collision probe
+pub const ANT_PROBE_DIST_MULT: f32 = 3.0;    // probe_dist = collision_radius * this
+pub const ANT_WALL_BOUNCE_NOISE: f32 = 1.0;  // half-range of angle noise on first bounce attempt
+
+// Pheromone direction / signal thresholds
+pub const DIRECTION_ZERO_THRESHOLD: f32 = 1e-6;       // min length_squared to treat direction as valid
+pub const ANT_NEST_SEEK_SIGNAL_THRESHOLD: f32 = 0.01; // signal below this triggers nest-direction bias

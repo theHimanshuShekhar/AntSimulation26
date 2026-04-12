@@ -65,7 +65,7 @@ fn score_sensor(ant_pos: Vec2, sensor_pos: Vec2, kind: PheromoneKind, grid: &Phe
         return 0.0;
     }
     let trail_dir = grid.sample_dir(idx, kind);
-    if trail_dir.length_squared() < 1e-6 {
+    if trail_dir.length_squared() < DIRECTION_ZERO_THRESHOLD {
         // No direction recorded yet — fall back to raw intensity
         return intensity;
     }
@@ -124,14 +124,14 @@ fn handle_collision(old_pos: Vec2, new_pos: Vec2, angle: &mut f32, world_map: &W
 
     if hit {
         use std::f32::consts::PI;
-        let probe_dist = r * 3.0; // 3x radius — enough to clear one grid cell
+        let probe_dist = r * ANT_PROBE_DIST_MULT; // enough to clear one grid cell
 
         // Try the standard PI-reverse + noise first, then random fallbacks.
         // This ensures we never commit to an angle that immediately re-hits a wall,
         // which is what causes ants to appear frozen with no pheromone nearby.
         for attempt in 0..8u32 {
             let try_angle = if attempt == 0 {
-                *angle + PI + (rng.gen::<f32>() - 0.5) * 1.0
+                *angle + PI + (rng.gen::<f32>() - 0.5) * ANT_WALL_BOUNCE_NOISE
             } else {
                 rng.gen::<f32>() * 2.0 * PI
             };
@@ -234,7 +234,7 @@ pub fn ant_behavior_system(
                 }
             }
             AntState::Returning => {
-                if total_signal < 0.01 {
+                if total_signal < ANT_NEST_SEEK_SIGNAL_THRESHOLD {
                     let to_nest = Vec2::ZERO - pos;
                     if to_nest.length() > 1.0 {
                         angle_diff(to_nest.y.atan2(to_nest.x), ant.angle) * SEEK_WEIGHT
