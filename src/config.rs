@@ -31,16 +31,6 @@ pub const FOOD_RESPAWN_DELAY: f32 = 5.0;       // seconds
 pub const CAVE_BORDER_THICKNESS: usize = 4; // grid cells thick on every edge (visible rock border)
 pub const CAVE_CENTER_EXCLUSION: usize = 35; // grid-cell radius around center always kept open
 
-// Legacy blob cave constants (used by world.rs — removed in Task 12 when world.rs is deleted)
-pub const CAVE_BLOB_COUNT_MIN: usize = 3;
-pub const CAVE_BLOB_COUNT_MAX: usize = 5;
-pub const CAVE_BLOB_RADIUS_MIN: f32 = 18.0;
-pub const CAVE_BLOB_RADIUS_MAX: f32 = 35.0;
-pub const CAVE_BLOB_NOISE: f32 = 7.0;
-pub const CAVE_SMOOTH_ITERATIONS: usize = 3;
-pub const CAVE_BIRTH_LIMIT: usize = 5;
-pub const CAVE_DEATH_LIMIT: usize = 2;
-
 // FBM terrain generation
 pub const FBM_LAYERS: usize = 6;
 pub const FBM_SCALE: f32 = 3.5;

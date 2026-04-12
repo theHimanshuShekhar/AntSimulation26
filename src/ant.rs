@@ -3,6 +3,7 @@ use rand::{Rng, SeedableRng};
 use crate::config::*;
 use crate::pheromone::{PheromoneGrid, PheromoneKind};
 use crate::terrain::WorldMap;
+use crate::FoodPositions;
 
 /// Ant state: either searching for food or returning to nest
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -16,12 +17,34 @@ pub enum AntState {
 pub struct Ant {
     pub angle: f32,       // current direction in radians
     pub state: AntState,
+    pub age: f32,         // seconds this ant has been alive
+    pub lifetime: f32,    // seconds until death (randomized at spawn)
 }
 
 /// Staging buffer for ant pheromone deposits (parallel-safe writes).
 /// Tuple: (grid_idx, kind, amount, trail_direction)
 #[derive(Resource, Default)]
 pub struct AntDeposits(pub Vec<(usize, PheromoneKind, f32, Vec2)>);
+
+/// Colony-level population tracker. Written by ant_age_system, read by ant_respawn_system.
+#[derive(Resource)]
+pub struct Colony {
+    pub active: usize,          // currently alive ants
+    pub total_died: usize,      // cumulative deaths since startup
+    pub pending_respawn: usize, // ants queued for respawning
+    pub respawn_timer: f32,     // seconds since last respawn tick
+}
+
+impl Colony {
+    pub fn new(initial_count: usize) -> Self {
+        Self {
+            active: initial_count,
+            total_died: 0,
+            pending_respawn: 0,
+            respawn_timer: 0.0,
+        }
+    }
+}
 
 /// Score a single pheromone sensor position using both intensity and trail direction.
 ///
@@ -136,6 +159,7 @@ pub fn ant_behavior_system(
     world_map: Res<WorldMap>,
     mut deposits: ResMut<AntDeposits>,
     time: Res<Time>,
+    food_positions: Res<FoodPositions>,
     mut rng: Local<Option<rand::rngs::SmallRng>>,
 ) {
     // Initialize RNG on first call
@@ -156,40 +180,53 @@ pub fn ant_behavior_system(
         // 2. Score 3 sensors — combines intensity with directional alignment
         let (left, ahead, right) = score_sensors(pos, ant.angle, follow_kind, &pheromone_grid);
 
-        // 3. Weighted follow: probability of following pheromone scales with total signal strength.
-        //    When signal is absent, fall back to a pure random walk.
+        // 3. Wander force: Gaussian angle noise, attenuated when pheromone is strong
         let total_signal = left + ahead + right;
-        let follow_prob = (total_signal * PHEROMONE_FOLLOW_WEIGHT).min(1.0);
-        let follow_pheromone = rng.gen::<f32>() < follow_prob;
+        let wander_w = 1.0 - (total_signal * PHEROMONE_FOLLOW_WEIGHT).min(0.85);
+        let wander = wander_w * WANDER_WEIGHT * gaussian_noise(rng) * ANT_TURN_NOISE;
 
-        // 4. Steer based on whether ant chose to follow pheromone or random walk
-        let turn = if follow_pheromone {
-            // Steer toward the strongest sensor direction
-            if ahead >= left && ahead >= right {
-                0.0 // go straight
-            } else if left > right {
-                -SENSOR_ANGLE * 0.5 // turn left
-            } else {
-                SENSOR_ANGLE * 0.5 // turn right
-            }
+        // 4. Pheromone force: continuous angle delta toward strongest sensor
+        let phero_delta: f32 = if ahead >= left && ahead >= right {
+            0.0
+        } else if left > right {
+            -SENSOR_ANGLE
         } else {
-            // No signal (or chance miss): pure random walk
-            gaussian_noise(rng) * ANT_TURN_NOISE
+            SENSOR_ANGLE
+        };
+        let phero = total_signal.min(1.0) * PHEROMONE_WEIGHT * phero_delta;
+
+        // 5. Seek force: steer toward nearest food (Searching) or nest (Returning, no signal)
+        let seek: f32 = match ant.state {
+            AntState::Searching => {
+                let nearest = food_positions.0.iter()
+                    .filter(|&&fp| fp.distance(pos) < SEEK_RADIUS)
+                    .min_by(|&&a, &&b| {
+                        a.distance(pos).partial_cmp(&b.distance(pos)).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                if let Some(&food_pos) = nearest {
+                    let target = (food_pos - pos).y.atan2((food_pos - pos).x);
+                    angle_diff(target, ant.angle) * SEEK_WEIGHT
+                } else {
+                    0.0
+                }
+            }
+            AntState::Returning => {
+                if total_signal < 0.01 {
+                    let to_nest = Vec2::ZERO - pos;
+                    if to_nest.length() > 1.0 {
+                        angle_diff(to_nest.y.atan2(to_nest.x), ant.angle) * SEEK_WEIGHT
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                }
+            }
         };
 
-        // 5. Small base noise always applied to prevent perfectly straight paths
+        // 6. Combine forces + small base noise to prevent perfectly straight paths
         let base_noise = gaussian_noise(rng) * ANT_TURN_NOISE * 0.15;
-        ant.angle += turn + base_noise;
-
-        // 6. If returning and no home signal, add slight bias toward nest (0,0)
-        if ant.state == AntState::Returning && left < 0.01 && ahead < 0.01 && right < 0.01 {
-            let to_nest = Vec2::new(0.0, 0.0) - pos;
-            if to_nest.length() > 1.0 {
-                let target_angle = to_nest.y.atan2(to_nest.x);
-                let angle_diff_val = angle_diff(target_angle, ant.angle);
-                ant.angle += angle_diff_val * 0.05; // gentle pull
-            }
-        }
+        ant.angle += wander + phero + seek + base_noise;
 
         // 7. Move forward
         let dx = ant.angle.cos() * ANT_SPEED * dt;
@@ -230,6 +267,25 @@ pub fn ant_deposit_flush_system(
     }
 }
 
+/// Age all ants each frame; despawn those that exceed their lifetime.
+pub fn ant_age_system(
+    mut commands: Commands,
+    mut ant_query: Query<(Entity, &mut Ant)>,
+    mut colony: ResMut<Colony>,
+    time: Res<Time>,
+) {
+    let dt = time.delta_secs();
+    for (entity, mut ant) in ant_query.iter_mut() {
+        ant.age += dt;
+        if ant.age >= ant.lifetime {
+            commands.entity(entity).despawn();
+            colony.active = colony.active.saturating_sub(1);
+            colony.pending_respawn += 1;
+            colony.total_died += 1;
+        }
+    }
+}
+
 /// Plugin that registers ant systems
 pub struct AntPlugin;
 
@@ -241,6 +297,7 @@ impl Plugin for AntPlugin {
                 (
                     ant_behavior_system,
                     ant_deposit_flush_system.after(ant_behavior_system),
+                    ant_age_system,
                 ),
             );
     }
