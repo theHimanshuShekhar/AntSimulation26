@@ -165,14 +165,8 @@ fn gaussian_noise(rng: &mut impl Rng) -> f32 {
 /// Compute shortest signed angle difference (handles wrapping around 2π)
 fn angle_diff(target: f32, current: f32) -> f32 {
     use std::f32::consts::PI;
-    let mut diff = target - current;
-    while diff > PI {
-        diff -= 2.0 * PI;
-    }
-    while diff < -PI {
-        diff += 2.0 * PI;
-    }
-    diff
+    let diff = (target - current).rem_euclid(2.0 * PI);
+    if diff > PI { diff - 2.0 * PI } else { diff }
 }
 
 /// Core ant behavior system: sensors, steering, movement, pheromone deposits
