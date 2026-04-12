@@ -111,6 +111,20 @@ pub struct PheromoneOverlay {
     pub visible: bool,
 }
 
+/// Decay one pheromone channel at cell `i` in-place.
+/// Takes slices so the caller can deref once and let the borrow checker split struct fields.
+#[inline]
+fn decay_channel(intensity: &mut [f32], dx: &mut [f32], dy: &mut [f32], i: usize) {
+    intensity[i] *= DECAY_FACTOR;
+    dx[i] *= DECAY_FACTOR;
+    dy[i] *= DECAY_FACTOR;
+    if intensity[i] < PHEROMONE_ZERO_THRESHOLD {
+        intensity[i] = 0.0;
+        dx[i] = 0.0;
+        dy[i] = 0.0;
+    }
+}
+
 /// Decay and diffuse pheromones at regular intervals
 pub fn pheromone_decay_system(
     mut grid: ResMut<PheromoneGrid>,
@@ -124,28 +138,16 @@ pub fn pheromone_decay_system(
     }
     *timer -= DECAY_INTERVAL;
 
-    // Decay open cells only — walls never receive deposits so can be skipped
-    for i in 0..GRID_W * GRID_H {
-        if world_map.walls[i] {
-            continue;
-        }
-
-        grid.home[i] *= DECAY_FACTOR;
-        grid.home_dir_x[i] *= DECAY_FACTOR;
-        grid.home_dir_y[i] *= DECAY_FACTOR;
-        if grid.home[i] < PHEROMONE_ZERO_THRESHOLD {
-            grid.home[i] = 0.0;
-            grid.home_dir_x[i] = 0.0;
-            grid.home_dir_y[i] = 0.0;
-        }
-
-        grid.food[i] *= DECAY_FACTOR;
-        grid.food_dir_x[i] *= DECAY_FACTOR;
-        grid.food_dir_y[i] *= DECAY_FACTOR;
-        if grid.food[i] < PHEROMONE_ZERO_THRESHOLD {
-            grid.food[i] = 0.0;
-            grid.food_dir_x[i] = 0.0;
-            grid.food_dir_y[i] = 0.0;
+    // Decay open cells only — walls never receive deposits so can be skipped.
+    // Deref ResMut once so the borrow checker can split struct fields across the two calls.
+    {
+        let g = &mut *grid;
+        for i in 0..GRID_W * GRID_H {
+            if world_map.walls[i] {
+                continue;
+            }
+            decay_channel(&mut g.home, &mut g.home_dir_x, &mut g.home_dir_y, i);
+            decay_channel(&mut g.food, &mut g.food_dir_x, &mut g.food_dir_y, i);
         }
     }
 
