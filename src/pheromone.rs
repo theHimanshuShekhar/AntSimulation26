@@ -41,10 +41,6 @@ impl PheromoneGrid {
     /// Deposit amount + trail direction into one channel at grid index.
     /// `dir` is the direction other ants should travel here (reverse of depositor's motion).
     pub fn deposit(&mut self, idx: usize, kind: PheromoneKind, amount: f32, dir: Vec2) {
-        let n = self.home.len();
-        if idx >= n {
-            return;
-        }
         let (intensity, dx, dy) = match kind {
             PheromoneKind::Home => (
                 &mut self.home,
@@ -57,6 +53,9 @@ impl PheromoneGrid {
                 &mut self.food_dir_y,
             ),
         };
+        if idx >= intensity.len() {
+            return;
+        }
         intensity[idx] = (intensity[idx] + amount).min(1.0);
         // Accumulate direction weighted by deposit amount so busier trails dominate
         dx[idx] += dir.x * amount;
