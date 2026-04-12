@@ -192,26 +192,30 @@ pub fn pheromone_texture_update_system(
     // Bevy/wgpu texture row 0 is at the TOP of the screen (world y = +WINDOW_H/2),
     // but grid gy=0 maps to world y = -WINDOW_H/2 (bottom). Flip Y when writing
     // so the texture aligns with ant world positions.
-    for gy in 0..GRID_H {
-        for gx in 0..GRID_W {
-            let grid_i = gy * GRID_W + gx;
-            let tex_row = GRID_H - 1 - gy; // Y-flip
-            let base = (tex_row * GRID_W + gx) * 4;
-            if overlay.visible && !world_map.walls[grid_i] {
-                let food_val = (grid.food[grid_i] * 255.0) as u8;
-                let home_val = (grid.home[grid_i] * 255.0) as u8;
-                pixels[base] = 0;
-                pixels[base + 1] = food_val;  // G = food (green)
-                pixels[base + 2] = home_val;  // B = home (blue)
-                pixels[base + 3] = food_val.max(home_val);
-            } else {
-                // Wall cells and hidden overlay: fully transparent
-                pixels[base] = 0;
-                pixels[base + 1] = 0;
-                pixels[base + 2] = 0;
-                pixels[base + 3] = 0;
+    if overlay.visible {
+        for gy in 0..GRID_H {
+            for gx in 0..GRID_W {
+                let grid_i = gy * GRID_W + gx;
+                let tex_row = GRID_H - 1 - gy; // Y-flip
+                let base = (tex_row * GRID_W + gx) * 4;
+                if world_map.walls[grid_i] {
+                    pixels[base] = 0;
+                    pixels[base + 1] = 0;
+                    pixels[base + 2] = 0;
+                    pixels[base + 3] = 0;
+                } else {
+                    let food_val = (grid.food[grid_i] * 255.0) as u8;
+                    let home_val = (grid.home[grid_i] * 255.0) as u8;
+                    pixels[base] = 0;
+                    pixels[base + 1] = food_val;  // G = food (green)
+                    pixels[base + 2] = home_val;  // B = home (blue)
+                    pixels[base + 3] = food_val.max(home_val);
+                }
             }
         }
+    } else {
+        // Overlay hidden: zero out entire texture in one pass
+        pixels.fill(0);
     }
 }
 
