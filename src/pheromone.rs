@@ -116,8 +116,12 @@ pub fn pheromone_decay_system(
     }
     *timer -= DECAY_INTERVAL;
 
-    // Decay all cells (intensity and direction components together)
+    // Decay open cells only — walls never receive deposits so can be skipped
     for i in 0..GRID_W * GRID_H {
+        if world_map.walls[i] {
+            continue;
+        }
+
         grid.home[i] *= DECAY_FACTOR;
         grid.home_dir_x[i] *= DECAY_FACTOR;
         grid.home_dir_y[i] *= DECAY_FACTOR;
