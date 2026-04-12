@@ -25,6 +25,10 @@ pub struct PheromoneGrid {
     // Pre-allocated diffusion scratch buffers — avoids per-tick Vec allocation
     scratch_home: Vec<f32>,
     scratch_food: Vec<f32>,
+    scratch_home_dx: Vec<f32>,
+    scratch_home_dy: Vec<f32>,
+    scratch_food_dx: Vec<f32>,
+    scratch_food_dy: Vec<f32>,
 }
 
 impl PheromoneGrid {
@@ -40,6 +44,10 @@ impl PheromoneGrid {
             dirty: false,
             scratch_home: vec![0.0; n],
             scratch_food: vec![0.0; n],
+            scratch_home_dx: vec![0.0; n],
+            scratch_home_dy: vec![0.0; n],
+            scratch_food_dx: vec![0.0; n],
+            scratch_food_dy: vec![0.0; n],
         }
     }
 
@@ -148,6 +156,10 @@ pub fn pheromone_decay_system(
         for i in 0..GRID_W * GRID_H {
             grid.scratch_home[i] = grid.home[i];
             grid.scratch_food[i] = grid.food[i];
+            grid.scratch_home_dx[i] = grid.home_dir_x[i];
+            grid.scratch_home_dy[i] = grid.home_dir_y[i];
+            grid.scratch_food_dx[i] = grid.food_dir_x[i];
+            grid.scratch_food_dy[i] = grid.food_dir_y[i];
         }
         for y in 1..GRID_H - 1 {
             for x in 1..GRID_W - 1 {
@@ -163,9 +175,17 @@ pub fn pheromone_decay_system(
                 ];
                 let sum_h: f32 = neighbors.iter().map(|&n| grid.scratch_home[n]).sum();
                 let sum_f: f32 = neighbors.iter().map(|&n| grid.scratch_food[n]).sum();
+                let sum_hdx: f32 = neighbors.iter().map(|&n| grid.scratch_home_dx[n]).sum();
+                let sum_hdy: f32 = neighbors.iter().map(|&n| grid.scratch_home_dy[n]).sum();
+                let sum_fdx: f32 = neighbors.iter().map(|&n| grid.scratch_food_dx[n]).sum();
+                let sum_fdy: f32 = neighbors.iter().map(|&n| grid.scratch_food_dy[n]).sum();
                 // Weighted average: DIFFUSION_SELF_WEIGHT current, DIFFUSION_NEIGHBOR_WEIGHT neighbors
                 grid.home[i] = (grid.home[i] * DIFFUSION_SELF_WEIGHT + (sum_h / 4.0) * DIFFUSION_NEIGHBOR_WEIGHT).min(1.0);
                 grid.food[i] = (grid.food[i] * DIFFUSION_SELF_WEIGHT + (sum_f / 4.0) * DIFFUSION_NEIGHBOR_WEIGHT).min(1.0);
+                grid.home_dir_x[i] = grid.home_dir_x[i] * DIFFUSION_SELF_WEIGHT + (sum_hdx / 4.0) * DIFFUSION_NEIGHBOR_WEIGHT;
+                grid.home_dir_y[i] = grid.home_dir_y[i] * DIFFUSION_SELF_WEIGHT + (sum_hdy / 4.0) * DIFFUSION_NEIGHBOR_WEIGHT;
+                grid.food_dir_x[i] = grid.food_dir_x[i] * DIFFUSION_SELF_WEIGHT + (sum_fdx / 4.0) * DIFFUSION_NEIGHBOR_WEIGHT;
+                grid.food_dir_y[i] = grid.food_dir_y[i] * DIFFUSION_SELF_WEIGHT + (sum_fdy / 4.0) * DIFFUSION_NEIGHBOR_WEIGHT;
             }
         }
     }
