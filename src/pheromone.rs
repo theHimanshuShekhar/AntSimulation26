@@ -66,6 +66,8 @@ impl PheromoneGrid {
                 &mut self.food_dir_y,
             ),
         };
+        // All six Vec fields are initialized to the same length in `new()`.
+        // Checking intensity.len() is sufficient to guard all of them.
         if idx >= intensity.len() {
             return;
         }
