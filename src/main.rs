@@ -277,10 +277,10 @@ fn update_score_ui(
 ) {
     if score.is_changed() || colony.is_changed() {
         for mut text in query.iter_mut() {
-            *text = Text::new(format!(
+            text.0 = format!(
                 "Food: {}  Ants: {} / {}",
                 score.collected, colony.active, ANT_COUNT
-            ));
+            );
         }
     }
 }
@@ -315,7 +315,7 @@ fn update_fps_ui(
         .and_then(|d| d.smoothed())
     {
         for mut text in query.iter_mut() {
-            *text = Text::new(format!("FPS: {:.0}", fps));
+            text.0 = format!("FPS: {:.0}", fps);
         }
     }
 }
