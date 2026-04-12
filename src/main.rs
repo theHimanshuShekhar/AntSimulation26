@@ -109,8 +109,8 @@ fn spawn_nest_and_food(
             let gy = cell_idx / GRID_W;
             let dx = gx as i32 - nest_grid_x as i32;
             let dy = gy as i32 - nest_grid_y as i32;
-            let dist = ((dx * dx + dy * dy) as f32).sqrt() as usize;
-            dist >= FOOD_MIN_NEST_DIST_CELLS
+            let dist_sq = (dx * dx + dy * dy) as usize;
+            dist_sq >= FOOD_MIN_NEST_DIST_CELLS * FOOD_MIN_NEST_DIST_CELLS
         })
         .collect();
 

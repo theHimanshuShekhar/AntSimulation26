@@ -221,10 +221,13 @@ pub fn ant_behavior_system(
         // 5. Seek force: steer toward nearest food (Searching) or nest (Returning, no signal)
         let seek: f32 = match ant.state {
             AntState::Searching => {
+                let seek_radius_sq = SEEK_RADIUS * SEEK_RADIUS;
                 let nearest = food_positions.0.iter()
-                    .filter(|&&fp| fp.distance(pos) < SEEK_RADIUS)
+                    .filter(|&&fp| fp.distance_squared(pos) < seek_radius_sq)
                     .min_by(|&&a, &&b| {
-                        a.distance(pos).partial_cmp(&b.distance(pos)).unwrap_or(std::cmp::Ordering::Equal)
+                        a.distance_squared(pos)
+                            .partial_cmp(&b.distance_squared(pos))
+                            .unwrap_or(std::cmp::Ordering::Equal)
                     });
                 if let Some(&food_pos) = nearest {
                     let target = (food_pos - pos).y.atan2((food_pos - pos).x);

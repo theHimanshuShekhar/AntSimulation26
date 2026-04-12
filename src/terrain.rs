@@ -194,11 +194,12 @@ pub fn generate_terrain(rng: &mut impl Rng) -> WorldMap {
     // Step 3: Zero density within center exclusion radius (nest area always open)
     let cx = GRID_W / 2;
     let cy = GRID_H / 2;
+    let excl_sq = (CAVE_CENTER_EXCLUSION * CAVE_CENTER_EXCLUSION) as i32;
     for y in 0..GRID_H {
         for x in 0..GRID_W {
             let dx = x as i32 - cx as i32;
             let dy = y as i32 - cy as i32;
-            if ((dx * dx + dy * dy) as f32).sqrt() < CAVE_CENTER_EXCLUSION as f32 {
+            if dx * dx + dy * dy < excl_sq {
                 density[y * GRID_W + x] = 0.0;
             }
         }
