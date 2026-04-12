@@ -189,22 +189,15 @@ pub fn pheromone_texture_update_system(
             let grid_i = gy * GRID_W + gx;
             let tex_row = GRID_H - 1 - gy; // Y-flip
             let base = (tex_row * GRID_W + gx) * 4;
-            if world_map.walls[grid_i] {
-                // Wall: dark grey, fully opaque
-                pixels[base] = 60;      // R
-                pixels[base + 1] = 60;  // G
-                pixels[base + 2] = 60;  // B
-                pixels[base + 3] = 255; // A
-            } else if overlay.visible {
-                // Open cell with pheromone overlay
+            if overlay.visible && !world_map.walls[grid_i] {
                 let food_val = (grid.food[grid_i] * 255.0) as u8;
                 let home_val = (grid.home[grid_i] * 255.0) as u8;
                 pixels[base] = 0;
                 pixels[base + 1] = food_val;  // G = food (green)
                 pixels[base + 2] = home_val;  // B = home (blue)
-                pixels[base + 3] = food_val.max(home_val); // A = max intensity
+                pixels[base + 3] = food_val.max(home_val);
             } else {
-                // No pheromones shown, open cell: transparent
+                // Wall cells and hidden overlay: fully transparent
                 pixels[base] = 0;
                 pixels[base + 1] = 0;
                 pixels[base + 2] = 0;
