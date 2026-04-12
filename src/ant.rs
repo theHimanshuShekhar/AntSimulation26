@@ -96,7 +96,7 @@ fn is_wall(pos: Vec2, world_map: &WorldMap) -> bool {
 }
 
 /// Handle wall and boundary collisions
-fn handle_collision(old_pos: Vec2, new_pos: Vec2, angle: &mut f32, world_map: &WorldMap) -> Vec2 {
+fn handle_collision(old_pos: Vec2, new_pos: Vec2, angle: &mut f32, world_map: &WorldMap, rng: &mut impl Rng) -> Vec2 {
     let half_w = WINDOW_W / 2.0;
     let half_h = WINDOW_H / 2.0;
 
@@ -131,9 +131,9 @@ fn handle_collision(old_pos: Vec2, new_pos: Vec2, angle: &mut f32, world_map: &W
         // which is what causes ants to appear frozen with no pheromone nearby.
         for attempt in 0..8u32 {
             let try_angle = if attempt == 0 {
-                *angle + PI + (rand::random::<f32>() - 0.5) * 1.0
+                *angle + PI + (rng.gen::<f32>() - 0.5) * 1.0
             } else {
-                rand::random::<f32>() * 2.0 * PI
+                rng.gen::<f32>() * 2.0 * PI
             };
             let probe = old_pos + Vec2::new(try_angle.cos(), try_angle.sin()) * probe_dist;
             let clear = !is_wall(probe, world_map)
@@ -257,7 +257,7 @@ pub fn ant_behavior_system(
         let new_pos = pos + Vec2::new(dx, dy);
 
         // 8. Wall + boundary collision
-        let new_pos = handle_collision(pos, new_pos, &mut ant.angle, &world_map);
+        let new_pos = handle_collision(pos, new_pos, &mut ant.angle, &world_map, rng);
 
         transform.translation = new_pos.extend(2.0); // z=2: above terrain and pheromone overlay
         transform.rotation = Quat::from_rotation_z(ant.angle);
