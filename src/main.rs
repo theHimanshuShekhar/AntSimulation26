@@ -59,7 +59,14 @@ fn build_and_run() {
                 setup_fps_ui,
             ),
         )
-        .add_systems(Update, (update_score_ui, update_fps_ui, ant_respawn_system))
+        .add_systems(
+            Update,
+            (
+                update_score_ui,
+                update_fps_ui,
+                ant_respawn_system.after(ant::ant_age_system),
+            ),
+        )
         .run();
 }
 

@@ -321,9 +321,9 @@ impl Plugin for AntPlugin {
             .add_systems(
                 Update,
                 (
-                    ant_behavior_system,
-                    ant_deposit_flush_system.after(ant_behavior_system),
                     ant_age_system,
+                    ant_behavior_system.after(ant_age_system),
+                    ant_deposit_flush_system.after(ant_behavior_system),
                 ),
             );
     }
