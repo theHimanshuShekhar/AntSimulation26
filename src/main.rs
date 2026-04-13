@@ -169,6 +169,29 @@ pub struct AntAssets {
     pub material: Handle<ColorMaterial>,
 }
 
+fn spawn_single_ant(
+    commands: &mut Commands,
+    mesh: Handle<Mesh>,
+    material: Handle<ColorMaterial>,
+    pos: Vec2,
+    rng: &mut impl rand::Rng,
+) {
+    let angle = rng.gen::<f32>() * std::f32::consts::TAU;
+    let lifetime = rng.gen_range(ANT_LIFETIME_MIN..ANT_LIFETIME_MAX);
+    commands.spawn((
+        Ant {
+            angle,
+            state: AntState::Searching,
+            age: 0.0,
+            lifetime,
+        },
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
+        Transform::from_translation(pos.extend(2.0))
+            .with_rotation(Quat::from_rotation_z(angle)),
+    ));
+}
+
 fn spawn_ants(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -185,20 +208,7 @@ fn spawn_ants(
     let searching_material = materials.add(ColorMaterial::from(Color::srgb(0.6, 0.3, 0.1)));
 
     for _ in 0..ANT_COUNT {
-        let angle = rng.gen::<f32>() * std::f32::consts::TAU;
-        let lifetime = rng.gen_range(ANT_LIFETIME_MIN..ANT_LIFETIME_MAX);
-        commands.spawn((
-            Ant {
-                angle,
-                state: AntState::Searching,
-                age: 0.0,
-                lifetime,
-            },
-            Mesh2d(ant_mesh.clone()),
-            MeshMaterial2d(searching_material.clone()),
-            Transform::from_translation(nest_pos.0.extend(2.0))
-                .with_rotation(Quat::from_rotation_z(angle)),
-        ));
+        spawn_single_ant(&mut commands, ant_mesh.clone(), searching_material.clone(), nest_pos.0, &mut rng);
     }
 
     commands.insert_resource(AntAssets {
@@ -229,20 +239,7 @@ fn ant_respawn_system(
     let mut rng = rand::thread_rng();
 
     for _ in 0..to_spawn {
-        let angle = rng.gen::<f32>() * std::f32::consts::TAU;
-        let lifetime = rng.gen_range(ANT_LIFETIME_MIN..ANT_LIFETIME_MAX);
-        commands.spawn((
-            Ant {
-                angle,
-                state: AntState::Searching,
-                age: 0.0,
-                lifetime,
-            },
-            Mesh2d(ant_assets.mesh.clone()),
-            MeshMaterial2d(ant_assets.material.clone()),
-            Transform::from_translation(nest_pos.0.extend(2.0))
-                .with_rotation(Quat::from_rotation_z(angle)),
-        ));
+        spawn_single_ant(&mut commands, ant_assets.mesh.clone(), ant_assets.material.clone(), nest_pos.0, &mut rng);
     }
 
     colony.pending_respawn -= to_spawn;
