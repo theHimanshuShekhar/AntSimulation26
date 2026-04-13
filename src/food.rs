@@ -202,7 +202,6 @@ pub struct FoodPlugin;
 impl Plugin for FoodPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(FoodScore::default())
-            .add_systems(Startup, setup_food_assets)
             .add_systems(
                 Update,
                 (

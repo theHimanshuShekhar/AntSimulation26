@@ -19,13 +19,14 @@ bevy = { version = "0.15", default-features = false, features = [
     "bevy_ui",
     "bevy_text",
     "default_font",
-    "x11",
     "multi_threaded",
-    "webgl2",
 ] }
 bevy_egui = "0.33"
 bytemuck = { version = "1", features = ["derive"] }
 rand = { version = "0.8", features = ["small_rng"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+bevy = { version = "0.15", default-features = false, features = ["x11"] }
 
 [profile.dev]
 opt-level = 1

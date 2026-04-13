@@ -18,8 +18,56 @@ use food::{spawn_food, spawn_nest, FoodAssets, FoodScore};
 use terrain::WorldMap;
 use ui::UiPlugin;
 
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::sync::Mutex;
+
+static LOG_FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
+
+fn log(msg: &str) {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let line = format!("[{}] {}\n", timestamp, msg);
+    if let Ok(mut guard) = LOG_FILE.lock() {
+        if let Some(f) = guard.as_mut() {
+            let _ = f.write_all(line.as_bytes());
+            let _ = f.flush();
+        }
+    }
+    eprintln!("{}", line.trim());
+}
+
+fn init_log() {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let log_path = exe_dir.join("ant_simulation.log");
+    match OpenOptions::new().create(true).append(true).open(&log_path) {
+        Ok(f) => {
+            if let Ok(mut guard) = LOG_FILE.lock() {
+                *guard = Some(f);
+            }
+            log(&format!("=== Ant Simulation started === log: {}", log_path.display()));
+        }
+        Err(e) => eprintln!("Could not open log file {}: {}", log_path.display(), e),
+    }
+}
+
 fn main() {
+    init_log();
+    log("main: setting panic hook");
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("PANIC: {}", info);
+        log(&msg);
+        // Give the OS time to flush before the process dies
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }));
+    log("main: calling build_and_run");
     build_and_run();
+    log("main: build_and_run returned (clean exit)");
 }
 
 /// Marker component for all simulation entities that should be despawned on restart.
@@ -36,6 +84,7 @@ pub enum AppState {
 }
 
 fn build_and_run() {
+    log("build_and_run: configuring DefaultPlugins");
     let default_plugins = DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
             title: "Ant Simulation".into(),
@@ -52,6 +101,7 @@ fn build_and_run() {
         ..default()
     });
 
+    log("build_and_run: building App");
     App::new()
         .add_plugins(default_plugins)
         .init_resource::<SimConfig>()
@@ -76,6 +126,7 @@ fn build_and_run() {
             OnEnter(AppState::Running),
             (
                 reset_simulation_resources,
+                food::setup_food_assets,
                 terrain::terrain_startup_system,
                 render::setup_terrain_mesh,
                 render::setup_pheromone_overlay,
@@ -97,6 +148,7 @@ fn build_and_run() {
             ),
         )
         .run();
+    log("build_and_run: App::run() returned");
 }
 
 /// Despawn all simulation entities and immediately queue transition back to Running.
@@ -113,12 +165,14 @@ fn teardown_system(
 
 /// Reset stateful resources so a fresh simulation starts clean.
 fn reset_simulation_resources(mut commands: Commands) {
+    log("system: reset_simulation_resources");
     commands.insert_resource(pheromone::PheromoneGrid::new());
     commands.insert_resource(FoodPositions::default());
     commands.insert_resource(FoodScore::default());
 }
 
 fn spawn_camera(mut commands: Commands) {
+    log("system: spawn_camera");
     commands.spawn(Camera2d::default());
 }
 
@@ -151,6 +205,7 @@ fn spawn_nest_and_food(
     food_assets: Res<FoodAssets>,
     config: Res<SimConfig>,
 ) {
+    log("system: spawn_nest_and_food");
     let mut rng = rand::thread_rng();
 
     let nest_pos = Vec2::ZERO;
@@ -253,6 +308,7 @@ fn spawn_ants(
     nest_pos: Res<NestPosition>,
     config: Res<SimConfig>,
 ) {
+    log("system: spawn_ants");
     let mut rng = rand::thread_rng();
 
     let ant_mesh = meshes.add(Triangle2d::new(
