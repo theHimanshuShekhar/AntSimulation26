@@ -46,7 +46,6 @@ fn build_and_run() {
             FrameTimeDiagnosticsPlugin,
         ))
         .insert_resource(FoodPositions::default())
-        .add_systems(PreUpdate, update_food_positions)
         .add_systems(
             Startup,
             (
@@ -65,6 +64,7 @@ fn build_and_run() {
                 update_score_ui,
                 update_fps_ui,
                 ant_respawn_system.after(ant::ant_age_system),
+                update_food_positions.after(food::food_respawn_system),
             ),
         )
         .run();
