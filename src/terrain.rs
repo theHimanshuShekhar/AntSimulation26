@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_asset::RenderAssetUsages;
 use rand::Rng;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use crate::config::*;
 use crate::noise::generate_fbm;
 
@@ -104,7 +104,17 @@ pub fn marching_squares_mesh(density: &[f32]) -> Mesh {
         ]
     };
 
+    let mut vertex_map: HashMap<[i32; 2], u32> = HashMap::new();
     let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+
+    // Helper: quantize a world position to integer key for deduplication.
+    // Multiply by 100 before truncating — vertices are on a 5px grid (cell_w ≈ 5.0),
+    // so positions are multiples of ~0.5px; multiplying by 100 gives ~50-unit integers.
+    // This avoids float equality issues while preserving distinct positions.
+    let quantize = |p: [f32; 2]| -> [i32; 2] {
+        [(p[0] * 100.0).round() as i32, (p[1] * 100.0).round() as i32]
+    };
 
     for y in 0..GRID_H - 1 {
         for x in 0..GRID_W - 1 {
@@ -141,13 +151,18 @@ pub fn marching_squares_mesh(density: &[f32]) -> Mesh {
 
             for &vi in TRIANGLES[config as usize] {
                 let v = verts[vi as usize];
-                positions.push([v[0], v[1], 0.0]);
+                let key = quantize(v);
+                let idx = *vertex_map.entry(key).or_insert_with(|| {
+                    let new_idx = positions.len() as u32;
+                    positions.push([v[0], v[1], 0.0]);
+                    new_idx
+                });
+                indices.push(idx);
             }
         }
     }
 
     let n = positions.len();
-    let indices: Vec<u32> = (0..n as u32).collect();
     let normals: Vec<[f32; 3]> = vec![[0.0, 0.0, 1.0]; n];
     let uvs: Vec<[f32; 2]> = vec![[0.0, 0.0]; n];
 
