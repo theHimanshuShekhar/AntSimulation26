@@ -51,28 +51,38 @@ impl PheromoneGrid {
         }
     }
 
+    /// Returns a shared reference to the intensity slice for the given kind.
+    fn intensity_slice(&self, kind: PheromoneKind) -> &[f32] {
+        match kind {
+            PheromoneKind::Home => &self.home,
+            PheromoneKind::Food => &self.food,
+        }
+    }
+
+    /// Returns a shared reference to the (dir_x, dir_y) slices for the given kind.
+    fn dir_slices(&self, kind: PheromoneKind) -> (&[f32], &[f32]) {
+        match kind {
+            PheromoneKind::Home => (&self.home_dir_x, &self.home_dir_y),
+            PheromoneKind::Food => (&self.food_dir_x, &self.food_dir_y),
+        }
+    }
+
+    /// Returns mutable references to the (intensity, dir_x, dir_y) Vecs for the given kind.
+    fn channel_mut(&mut self, kind: PheromoneKind) -> (&mut Vec<f32>, &mut Vec<f32>, &mut Vec<f32>) {
+        match kind {
+            PheromoneKind::Home => (&mut self.home, &mut self.home_dir_x, &mut self.home_dir_y),
+            PheromoneKind::Food => (&mut self.food, &mut self.food_dir_x, &mut self.food_dir_y),
+        }
+    }
+
     /// Deposit amount + trail direction into one channel at grid index.
     /// `dir` is the direction other ants should travel here (reverse of depositor's motion).
     pub fn deposit(&mut self, idx: usize, kind: PheromoneKind, amount: f32, dir: Vec2) {
-        let (intensity, dx, dy) = match kind {
-            PheromoneKind::Home => (
-                &mut self.home,
-                &mut self.home_dir_x,
-                &mut self.home_dir_y,
-            ),
-            PheromoneKind::Food => (
-                &mut self.food,
-                &mut self.food_dir_x,
-                &mut self.food_dir_y,
-            ),
-        };
-        // All six Vec fields are initialized to the same length in `new()`.
-        // Checking intensity.len() is sufficient to guard all of them.
+        let (intensity, dx, dy) = self.channel_mut(kind);
         if idx >= intensity.len() {
             return;
         }
         intensity[idx] = (intensity[idx] + amount).min(1.0);
-        // Accumulate direction weighted by deposit amount so busier trails dominate
         dx[idx] += dir.x * amount;
         dy[idx] += dir.y * amount;
         self.dirty = true;
@@ -80,19 +90,12 @@ impl PheromoneGrid {
 
     /// Sample intensity at index, returns 0.0 if out of bounds
     pub fn sample(&self, idx: usize, kind: PheromoneKind) -> f32 {
-        let grid = match kind {
-            PheromoneKind::Home => &self.home,
-            PheromoneKind::Food => &self.food,
-        };
-        grid.get(idx).copied().unwrap_or(0.0)
+        self.intensity_slice(kind).get(idx).copied().unwrap_or(0.0)
     }
 
     /// Sample normalized trail direction at index; returns Vec2::ZERO if no direction stored
     pub fn sample_dir(&self, idx: usize, kind: PheromoneKind) -> Vec2 {
-        let (dx_vec, dy_vec) = match kind {
-            PheromoneKind::Home => (&self.home_dir_x, &self.home_dir_y),
-            PheromoneKind::Food => (&self.food_dir_x, &self.food_dir_y),
-        };
+        let (dx_vec, dy_vec) = self.dir_slices(kind);
         if idx >= dx_vec.len() {
             return Vec2::ZERO;
         }
