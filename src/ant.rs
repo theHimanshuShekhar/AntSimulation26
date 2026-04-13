@@ -177,6 +177,7 @@ pub fn ant_behavior_system(
     mut deposits: ResMut<AntDeposits>,
     time: Res<Time>,
     food_positions: Res<FoodPositions>,
+    nest_pos: Res<crate::NestPosition>,
     mut rng: Local<Option<rand::rngs::SmallRng>>,
 ) {
     // Initialize RNG on first call
@@ -235,7 +236,7 @@ pub fn ant_behavior_system(
             }
             AntState::Returning => {
                 if total_signal < ANT_NEST_SEEK_SIGNAL_THRESHOLD {
-                    let to_nest = Vec2::ZERO - pos;
+                    let to_nest = nest_pos.0 - pos;
                     if to_nest.length() > 1.0 {
                         angle_diff(to_nest.y.atan2(to_nest.x), ant.angle) * SEEK_WEIGHT
                     } else {
