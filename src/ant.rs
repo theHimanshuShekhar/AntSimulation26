@@ -19,6 +19,7 @@ pub struct Ant {
     pub state: AntState,
     pub age: f32,         // seconds this ant has been alive
     pub lifetime: f32,    // seconds until death (randomized at spawn)
+    pub stuck_frames: u8, // frames since last successful movement
 }
 
 /// Staging buffer for ant pheromone deposits (parallel-safe writes).
@@ -259,9 +260,26 @@ pub fn ant_behavior_system(
         let new_pos = pos + Vec2::new(dx, dy);
 
         // 8. Wall + boundary collision
-        let new_pos = handle_collision(pos, new_pos, &mut ant.angle, &world_map, rng);
+        let final_pos = handle_collision(pos, new_pos, &mut ant.angle, &world_map, rng);
 
-        transform.translation = new_pos.extend(2.0); // z=2: above terrain and pheromone overlay
+        // Stuck detection: if position didn't change, the ant is wedged in a corner.
+        // After ANT_STUCK_THRESHOLD consecutive stuck frames, teleport back to nest.
+        if final_pos == pos {
+            ant.stuck_frames = ant.stuck_frames.saturating_add(1);
+            if ant.stuck_frames >= ANT_STUCK_THRESHOLD {
+                ant.stuck_frames = 0;
+                // Teleport to nest and randomize angle
+                let nest_world = nest_pos.0;
+                transform.translation = nest_world.extend(2.0);
+                ant.angle = rng.gen::<f32>() * std::f32::consts::TAU;
+                transform.rotation = Quat::from_rotation_z(ant.angle);
+                continue; // skip deposit for this frame
+            }
+        } else {
+            ant.stuck_frames = 0;
+        }
+
+        transform.translation = final_pos.extend(2.0); // z=2: above terrain and pheromone overlay
         transform.rotation = Quat::from_rotation_z(ant.angle);
 
         // 9. Deposit pheromone at current position.

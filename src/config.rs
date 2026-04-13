@@ -38,6 +38,7 @@ pub const ANT_COLLISION_RADIUS: f32 = 4.0;   // footprint probe radius in pixels
 pub const ANT_BOUNDARY_MARGIN: f32 = 5.0;    // world-edge buffer in pixels
 pub const ANT_PROBE_DIST_MULT: f32 = 3.0;    // probe_dist = collision_radius * this
 pub const ANT_WALL_BOUNCE_NOISE: f32 = 1.0;  // half-range of angle noise on first bounce attempt
+pub const ANT_STUCK_THRESHOLD: u8 = 10;      // frames stuck before teleporting to nest
 
 // ── Pheromones ─────────────────────────────────────────────────────────────
 pub const DEPOSIT_STRENGTH: f32 = 0.3;    // amount deposited per tick, clamped to 1.0

@@ -184,6 +184,7 @@ fn spawn_single_ant(
             state: AntState::Searching,
             age: 0.0,
             lifetime,
+            stuck_frames: 0,
         },
         Mesh2d(mesh),
         MeshMaterial2d(material),
