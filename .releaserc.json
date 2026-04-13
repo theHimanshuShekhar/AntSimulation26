@@ -1,0 +1,13 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/github", {
+      "assets": [
+        { "path": "ant_simulation-linux-x86_64", "label": "Linux x86_64" },
+        { "path": "ant_simulation-windows-x86_64.exe", "label": "Windows x86_64" }
+      ]
+    }]
+  ]
+}
