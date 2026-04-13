@@ -11,8 +11,6 @@ pub struct SimConfig {
     pub ant_speed: f32,
     pub ant_lifetime_min: f32,
     pub ant_lifetime_max: f32,
-    pub ant_respawn_interval: f32,
-    pub ant_respawn_batch: usize,
 
     // Food
     pub food_source_count: usize,
@@ -42,8 +40,6 @@ impl Default for SimConfig {
             ant_speed: ANT_SPEED,
             ant_lifetime_min: ANT_LIFETIME_MIN,
             ant_lifetime_max: ANT_LIFETIME_MAX,
-            ant_respawn_interval: ANT_RESPAWN_INTERVAL,
-            ant_respawn_batch: ANT_RESPAWN_BATCH,
             food_source_count: FOOD_SOURCE_COUNT,
             food_per_source: FOOD_PER_SOURCE,
             food_respawns: true,
