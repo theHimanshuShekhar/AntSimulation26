@@ -81,7 +81,15 @@ pub struct FoodPositions(pub Vec<Vec2>);
 fn update_food_positions(
     mut positions: ResMut<FoodPositions>,
     food_query: Query<&Transform, With<food::Food>>,
+    added_food: Query<(), Added<food::Food>>,
+    mut removed_food: RemovedComponents<food::Food>,
 ) {
+    // Only rebuild if something changed
+    let has_additions = !added_food.is_empty();
+    let has_removals = removed_food.read().next().is_some();
+    if !has_additions && !has_removals {
+        return;
+    }
     positions.0.clear();
     for transform in food_query.iter() {
         positions.0.push(transform.translation.truncate());
