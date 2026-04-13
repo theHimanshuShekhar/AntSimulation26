@@ -5,6 +5,7 @@ use crate::pheromone::{PheromoneGrid, PheromoneKind};
 use crate::sim_config::SimConfig;
 use crate::terrain::WorldMap;
 use crate::FoodPositions;
+use crate::SimEntity;
 
 /// Ant state: either searching for food or returning to nest
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -21,6 +22,43 @@ pub struct Ant {
     pub age: f32,         // seconds this ant has been alive
     pub lifetime: f32,    // seconds until death (randomized at spawn)
     pub stuck_frames: u8, // frames since last successful movement
+    pub has_eaten: bool,  // true after first food pickup (one-time lifespan bonus)
+}
+
+/// Cached handles for ant mesh and material — populated once at startup.
+#[derive(Resource)]
+pub struct AntAssets {
+    pub mesh: Handle<Mesh>,
+    pub material: Handle<ColorMaterial>,
+}
+
+/// Spawn a single ant at the given position with a randomized lifetime and angle.
+pub fn spawn_single_ant(
+    commands: &mut Commands,
+    mesh: Handle<Mesh>,
+    material: Handle<ColorMaterial>,
+    pos: Vec2,
+    lifetime_min: f32,
+    lifetime_max: f32,
+    rng: &mut impl rand::Rng,
+) {
+    let angle = rng.gen::<f32>() * std::f32::consts::TAU;
+    let lifetime = rng.gen_range(lifetime_min..lifetime_max);
+    commands.spawn((
+        SimEntity,
+        Ant {
+            angle,
+            state: AntState::Searching,
+            age: 0.0,
+            lifetime,
+            stuck_frames: 0,
+            has_eaten: false,
+        },
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
+        Transform::from_translation(pos.extend(2.0))
+            .with_rotation(Quat::from_rotation_z(angle)),
+    ));
 }
 
 /// Staging buffer for ant pheromone deposits (parallel-safe writes).
@@ -28,13 +66,11 @@ pub struct Ant {
 #[derive(Resource, Default)]
 pub struct AntDeposits(pub Vec<(usize, PheromoneKind, f32, Vec2)>);
 
-/// Colony-level population tracker. Written by ant_age_system, read by ant_respawn_system.
+/// Colony-level population tracker.
 #[derive(Resource)]
 pub struct Colony {
-    pub active: usize,          // currently alive ants
-    pub total_died: usize,      // cumulative deaths since startup
-    pub pending_respawn: usize, // ants queued for respawning
-    pub respawn_timer: f32,     // seconds since last respawn tick
+    pub active: usize,      // currently alive ants
+    pub total_died: usize,  // cumulative deaths since startup
 }
 
 impl Colony {
@@ -42,8 +78,6 @@ impl Colony {
         Self {
             active: initial_count,
             total_died: 0,
-            pending_respawn: 0,
-            respawn_timer: 0.0,
         }
     }
 }
@@ -265,16 +299,11 @@ pub fn ant_behavior_system(
         let final_pos = handle_collision(pos, new_pos, &mut ant.angle, &world_map, rng);
 
         // Stuck detection: if position didn't change, the ant is wedged in a corner.
-        // After ANT_STUCK_THRESHOLD consecutive stuck frames, teleport back to nest.
+        // After ANT_STUCK_THRESHOLD consecutive stuck frames, the ant dies.
         if final_pos == pos {
             ant.stuck_frames = ant.stuck_frames.saturating_add(1);
             if ant.stuck_frames >= ANT_STUCK_THRESHOLD {
-                ant.stuck_frames = 0;
-                // Teleport to nest and randomize angle
-                let nest_world = nest_pos.0;
-                transform.translation = nest_world.extend(2.0);
-                ant.angle = rng.gen::<f32>() * std::f32::consts::TAU;
-                transform.rotation = Quat::from_rotation_z(ant.angle);
+                ant.age = ant.lifetime + 1.0; // force death on next age-system tick
                 continue; // skip deposit for this frame
             }
         } else {
@@ -326,7 +355,6 @@ pub fn ant_age_system(
         if ant.age >= ant.lifetime {
             commands.entity(entity).despawn();
             colony.active = colony.active.saturating_sub(1);
-            colony.pending_respawn += 1;
             colony.total_died += 1;
         }
     }

@@ -13,7 +13,7 @@ use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use rand::Rng;
 use config::*;
 use sim_config::SimConfig;
-use ant::{Ant, AntState, Colony};
+use ant::{Colony, AntAssets};
 use food::{spawn_food, spawn_nest, FoodAssets, FoodScore};
 use terrain::WorldMap;
 use ui::UiPlugin;
@@ -80,6 +80,7 @@ pub struct SimEntity;
 pub enum AppState {
     #[default]
     Running,
+    GameOver,
     Restarting,
 }
 
@@ -116,6 +117,7 @@ fn build_and_run() {
             UiPlugin,
         ))
         .insert_resource(FoodPositions::default())
+        .insert_resource(SimStats::default())
         // ── Persistent one-time startup (camera, HUD) ──────────────────────
         .add_systems(
             Startup,
@@ -143,8 +145,9 @@ fn build_and_run() {
             (
                 update_score_ui,
                 update_fps_ui,
-                ant_respawn_system.after(ant::ant_age_system),
                 update_food_positions.after(food::food_respawn_system),
+                game_over_detection_system.run_if(in_state(AppState::Running)),
+                stats_update_system.run_if(in_state(AppState::Running)),
             ),
         )
         .run();
@@ -163,12 +166,31 @@ fn teardown_system(
     next_state.set(AppState::Running);
 }
 
+/// Accumulated statistics for the current simulation run.
+#[derive(Resource, Default)]
+pub struct SimStats {
+    pub peak_population: usize,
+    pub elapsed_secs: f32,
+}
+
 /// Reset stateful resources so a fresh simulation starts clean.
 fn reset_simulation_resources(mut commands: Commands) {
     log("system: reset_simulation_resources");
     commands.insert_resource(pheromone::PheromoneGrid::new());
     commands.insert_resource(FoodPositions::default());
     commands.insert_resource(FoodScore::default());
+    commands.insert_resource(SimStats::default());
+}
+
+fn stats_update_system(
+    colony: Res<Colony>,
+    mut stats: ResMut<SimStats>,
+    time: Res<Time>,
+) {
+    stats.elapsed_secs += time.delta_secs();
+    if colony.active > stats.peak_population {
+        stats.peak_population = colony.active;
+    }
 }
 
 fn spawn_camera(mut commands: Commands) {
@@ -267,40 +289,6 @@ fn spawn_nest_and_food(
 #[derive(Resource)]
 pub struct NestPosition(pub Vec2);
 
-/// Cached handles for ant mesh and material — populated once at startup.
-#[derive(Resource)]
-pub struct AntAssets {
-    pub mesh: Handle<Mesh>,
-    pub material: Handle<ColorMaterial>,
-}
-
-fn spawn_single_ant(
-    commands: &mut Commands,
-    mesh: Handle<Mesh>,
-    material: Handle<ColorMaterial>,
-    pos: Vec2,
-    lifetime_min: f32,
-    lifetime_max: f32,
-    rng: &mut impl rand::Rng,
-) {
-    let angle = rng.gen::<f32>() * std::f32::consts::TAU;
-    let lifetime = rng.gen_range(lifetime_min..lifetime_max);
-    commands.spawn((
-        SimEntity,
-        Ant {
-            angle,
-            state: AntState::Searching,
-            age: 0.0,
-            lifetime,
-            stuck_frames: 0,
-        },
-        Mesh2d(mesh),
-        MeshMaterial2d(material),
-        Transform::from_translation(pos.extend(2.0))
-            .with_rotation(Quat::from_rotation_z(angle)),
-    ));
-}
-
 fn spawn_ants(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -319,7 +307,7 @@ fn spawn_ants(
     let searching_material = materials.add(ColorMaterial::from(Color::srgb(0.6, 0.3, 0.1)));
 
     for _ in 0..config.ant_count {
-        spawn_single_ant(
+        ant::spawn_single_ant(
             &mut commands,
             ant_mesh.clone(),
             searching_material.clone(),
@@ -337,41 +325,14 @@ fn spawn_ants(
     commands.insert_resource(Colony::new(config.ant_count));
 }
 
-fn ant_respawn_system(
-    mut commands: Commands,
-    mut colony: ResMut<Colony>,
-    nest_pos: Res<NestPosition>,
-    ant_assets: Res<AntAssets>,
-    config: Res<SimConfig>,
-    time: Res<Time>,
+fn game_over_detection_system(
+    colony: Res<Colony>,
+    mut next_state: ResMut<NextState<AppState>>,
 ) {
-    colony.respawn_timer += time.delta_secs();
-    if colony.respawn_timer < config.ant_respawn_interval {
-        return;
+    // At least one ant must have died to rule out the pre-spawn moment when active==0
+    if colony.active == 0 && colony.total_died > 0 {
+        next_state.set(AppState::GameOver);
     }
-    colony.respawn_timer -= config.ant_respawn_interval;
-
-    let to_spawn = config.ant_respawn_batch.min(colony.pending_respawn);
-    if to_spawn == 0 {
-        return;
-    }
-
-    let mut rng = rand::thread_rng();
-
-    for _ in 0..to_spawn {
-        spawn_single_ant(
-            &mut commands,
-            ant_assets.mesh.clone(),
-            ant_assets.material.clone(),
-            nest_pos.0,
-            config.ant_lifetime_min,
-            config.ant_lifetime_max,
-            &mut rng,
-        );
-    }
-
-    colony.pending_respawn -= to_spawn;
-    colony.active += to_spawn;
 }
 
 fn setup_score_ui(mut commands: Commands) {

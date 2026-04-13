@@ -3,13 +3,11 @@ pub const WINDOW_W: f32 = 1280.0;
 pub const WINDOW_H: f32 = 720.0;
 
 // ── Grid ───────────────────────────────────────────────────────────────────
-pub const GRID_W: usize = 256;
-pub const GRID_H: usize = 144;
+pub const GRID_W: usize = 512;
+pub const GRID_H: usize = 288;
 
 // ── Ants — population ──────────────────────────────────────────────────────
 pub const ANT_COUNT: usize = 2000;
-pub const ANT_RESPAWN_INTERVAL: f32 = 1.0;
-pub const ANT_RESPAWN_BATCH: usize = 20;
 
 // ── Ants — lifetime ────────────────────────────────────────────────────────
 pub const ANT_LIFETIME_MIN: f32 = 30.0;
@@ -34,7 +32,7 @@ pub const BASE_NOISE_FRACTION: f32 = 0.15;   // base noise scalar relative to wa
 pub const ANT_TURN_NOISE: f32 = 0.26;     // radians ~15° gaussian noise per frame
 
 // ── Ants — collision / boundary ────────────────────────────────────────────
-pub const ANT_COLLISION_RADIUS: f32 = 4.0;   // footprint probe radius in pixels
+pub const ANT_COLLISION_RADIUS: f32 = 2.0;   // footprint probe radius in pixels
 pub const ANT_BOUNDARY_MARGIN: f32 = 5.0;    // world-edge buffer in pixels
 pub const ANT_PROBE_DIST_MULT: f32 = 3.0;    // probe_dist = collision_radius * this
 pub const ANT_WALL_BOUNCE_NOISE: f32 = 1.0;  // half-range of angle noise on first bounce attempt

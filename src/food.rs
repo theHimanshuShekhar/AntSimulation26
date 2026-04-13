@@ -1,7 +1,7 @@
 use bevy::prelude::*;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use crate::config::*;
-use crate::ant::{Ant, AntState};
+use crate::ant::{self, Ant, AntState};
 use crate::sim_config::SimConfig;
 use crate::terrain::WorldMap;
 use crate::SimEntity;
@@ -55,6 +55,7 @@ pub fn food_interaction_system(
     mut food_query: Query<(Entity, &mut Food, &Transform)>,
     mut ant_query: Query<(&Transform, &mut Ant)>,
     config: Res<SimConfig>,
+    mut rng: Local<Option<rand::rngs::SmallRng>>,
 ) {
     for (ant_transform, mut ant) in ant_query.iter_mut() {
         // Only Searching ants interact with food
@@ -81,6 +82,13 @@ pub fn food_interaction_system(
                 // Ant switches to Returning state
                 ant.state = AntState::Returning;
 
+                // First-time eat: grant one extra lifespan
+                if !ant.has_eaten {
+                    ant.has_eaten = true;
+                    let rng = rng.get_or_insert_with(|| rand::rngs::SmallRng::from_entropy());
+                    ant.lifetime += rng.gen_range(config.ant_lifetime_min..config.ant_lifetime_max);
+                }
+
                 // If food source is depleted, despawn it and optionally spawn respawn timer
                 if food.units == 0 {
                     commands.entity(food_entity).despawn();
@@ -99,17 +107,23 @@ pub fn food_interaction_system(
 }
 
 /// Ant-Nest interaction: when a Returning ant is within NEST_INTERACTION_RADIUS of the Nest,
-/// the ant switches to Searching state and the FoodScore is incremented.
+/// the ant switches to Searching state, FoodScore is incremented, and a new ant is born.
 pub fn nest_interaction_system(
+    mut commands: Commands,
     nest_query: Query<&Transform, With<Nest>>,
     mut ant_query: Query<(&Transform, &mut Ant)>,
     mut score: ResMut<FoodScore>,
+    ant_assets: Res<ant::AntAssets>,
+    nest_pos: Res<crate::NestPosition>,
+    config: Res<SimConfig>,
+    mut colony: ResMut<ant::Colony>,
+    mut rng: Local<Option<rand::rngs::SmallRng>>,
 ) {
     // Get the nest position; if no nest, return early
     let Ok(nest_transform) = nest_query.get_single() else {
         return;
     };
-    let nest_pos = nest_transform.translation.truncate();
+    let nest_world_pos = nest_transform.translation.truncate();
 
     for (ant_transform, mut ant) in ant_query.iter_mut() {
         // Only Returning ants interact with nest
@@ -120,12 +134,25 @@ pub fn nest_interaction_system(
         let ant_pos = ant_transform.translation.truncate();
 
         // Check if ant is within nest interaction radius
-        if ant_pos.distance(nest_pos) < NEST_INTERACTION_RADIUS {
-            // Ant switches to Searching state
+        if ant_pos.distance(nest_world_pos) < NEST_INTERACTION_RADIUS {
+            // Ant deposits food and returns to searching
             ant.state = AntState::Searching;
 
             // Increment food score
             score.collected += 1;
+
+            // Birth a new ant at the nest
+            let rng = rng.get_or_insert_with(|| rand::rngs::SmallRng::from_entropy());
+            ant::spawn_single_ant(
+                &mut commands,
+                ant_assets.mesh.clone(),
+                ant_assets.material.clone(),
+                nest_pos.0,
+                config.ant_lifetime_min,
+                config.ant_lifetime_max,
+                rng,
+            );
+            colony.active += 1;
         }
     }
 }
