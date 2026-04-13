@@ -252,8 +252,9 @@ pub fn ant_behavior_system(
         ant.angle += wander + phero + seek + base_noise;
 
         // 7. Move forward
-        let dx = ant.angle.cos() * ANT_SPEED * dt;
-        let dy = ant.angle.sin() * ANT_SPEED * dt;
+        let (move_cos, move_sin) = (ant.angle.cos(), ant.angle.sin());
+        let dx = move_cos * ANT_SPEED * dt;
+        let dy = move_sin * ANT_SPEED * dt;
         let new_pos = pos + Vec2::new(dx, dy);
 
         // 8. Wall + boundary collision
@@ -273,7 +274,8 @@ pub fn ant_behavior_system(
                     AntState::Returning => PheromoneKind::Food,
                 };
                 // Reverse of movement direction = direction back along the trail
-                let trail_dir = Vec2::new(-ant.angle.cos(), -ant.angle.sin());
+                let (cos_a, sin_a) = (ant.angle.cos(), ant.angle.sin());
+                let trail_dir = Vec2::new(-cos_a, -sin_a);
                 deposits.0.push((grid_idx, deposit_kind, DEPOSIT_STRENGTH, trail_dir));
             }
         }
