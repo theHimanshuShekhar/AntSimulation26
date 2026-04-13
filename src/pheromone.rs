@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use crate::config::*;
+use crate::sim_config::SimConfig;
 use crate::terrain::WorldMap;
 
 /// Two types of pheromones: home (to nest) and food (to food sources)
@@ -123,10 +124,10 @@ pub struct PheromoneOverlay {
 /// Decay one pheromone channel at cell `i` in-place.
 /// Takes slices so the caller can deref once and let the borrow checker split struct fields.
 #[inline]
-fn decay_channel(intensity: &mut [f32], dx: &mut [f32], dy: &mut [f32], i: usize) {
-    intensity[i] *= DECAY_FACTOR;
-    dx[i] *= DECAY_FACTOR;
-    dy[i] *= DECAY_FACTOR;
+fn decay_channel(intensity: &mut [f32], dx: &mut [f32], dy: &mut [f32], i: usize, decay_factor: f32) {
+    intensity[i] *= decay_factor;
+    dx[i] *= decay_factor;
+    dy[i] *= decay_factor;
     if intensity[i] < PHEROMONE_ZERO_THRESHOLD {
         intensity[i] = 0.0;
         dx[i] = 0.0;
@@ -139,13 +140,16 @@ pub fn pheromone_decay_system(
     mut grid: ResMut<PheromoneGrid>,
     world_map: Res<WorldMap>,
     time: Res<Time>,
+    config: Res<SimConfig>,
     mut timer: Local<f32>,
 ) {
     *timer += time.delta_secs();
-    if *timer < DECAY_INTERVAL {
+    if *timer < config.decay_interval {
         return;
     }
-    *timer -= DECAY_INTERVAL;
+    *timer -= config.decay_interval;
+
+    let decay_factor = config.decay_factor;
 
     // Decay open cells only — walls never receive deposits so can be skipped.
     // Deref ResMut once so the borrow checker can split struct fields across the two calls.
@@ -155,13 +159,13 @@ pub fn pheromone_decay_system(
             if world_map.walls[i] {
                 continue;
             }
-            decay_channel(&mut g.home, &mut g.home_dir_x, &mut g.home_dir_y, i);
-            decay_channel(&mut g.food, &mut g.food_dir_x, &mut g.food_dir_y, i);
+            decay_channel(&mut g.home, &mut g.home_dir_x, &mut g.home_dir_y, i, decay_factor);
+            decay_channel(&mut g.food, &mut g.food_dir_x, &mut g.food_dir_y, i, decay_factor);
         }
     }
 
     // Optional diffusion: simple 1-step box blur (skips wall cells)
-    if DIFFUSION_ENABLED {
+    if config.diffusion_enabled {
         // Copy current values into scratch buffers (no alloc — buffers pre-allocated in PheromoneGrid::new).
         // Use indexed loop so the borrow checker can see scratch and live fields are disjoint.
         for i in 0..GRID_W * GRID_H {
@@ -259,12 +263,13 @@ pub fn pheromone_texture_update_system(
     }
 }
 
-/// Plugin that registers pheromone systems
+/// Plugin that registers pheromone systems.
+/// PheromoneGrid resource is inserted in main.rs reset_simulation_resources (on every restart).
 pub struct PheromonePlugin;
 
 impl Plugin for PheromonePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(PheromoneGrid::new()).add_systems(
+        app.add_systems(
             Update,
             (pheromone_decay_system, pheromone_texture_update_system),
         );

@@ -5,6 +5,7 @@ use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use crate::config::*;
 use crate::noise::generate_fbm;
+use crate::sim_config::SimConfig;
 
 /// WorldMap resource — same public API as old world.rs so other modules need minimal changes.
 #[derive(Resource)]
@@ -92,10 +93,10 @@ fn mix2(p0: [f32; 2], p1: [f32; 2], t: f32) -> [f32; 2] {
 ///
 /// Vertices on wall/open edges are linearly interpolated to sit on the iso-contour,
 /// producing smooth terrain edges instead of stairstepped grid boundaries.
-pub fn marching_squares_mesh(density: &[f32]) -> Mesh {
+pub fn marching_squares_mesh(density: &[f32], iso_level: f32) -> Mesh {
     let cell_w = WINDOW_W / GRID_W as f32;
     let cell_h = WINDOW_H / GRID_H as f32;
-    let iso = TERRAIN_ISO_LEVEL;
+    let iso = iso_level;
 
     let corner_pos = |gx: usize, gy: usize| -> [f32; 2] {
         [
@@ -182,15 +183,21 @@ pub fn marching_squares_mesh(density: &[f32]) -> Mesh {
 // ---------------------------------------------------------------------------
 
 /// Generate the FBM terrain, logical wall grid, and valid spawn cells.
-pub fn generate_terrain(rng: &mut impl Rng) -> WorldMap {
+pub fn generate_terrain(
+    rng: &mut impl Rng,
+    fbm_scale: f32,
+    fbm_layers: usize,
+    terrain_iso_level: f32,
+    cave_center_exclusion: usize,
+) -> WorldMap {
     let seed = rng.gen::<f32>() * 1000.0;
 
     // Step 1: Generate FBM density field
     let mut density = generate_fbm(
         GRID_W,
         GRID_H,
-        FBM_SCALE,
-        FBM_LAYERS,
+        fbm_scale,
+        fbm_layers,
         FBM_LACUNARITY,
         FBM_PERSISTENCE,
         seed,
@@ -209,7 +216,7 @@ pub fn generate_terrain(rng: &mut impl Rng) -> WorldMap {
     // Step 3: Zero density within center exclusion radius (nest area always open)
     let cx = GRID_W / 2;
     let cy = GRID_H / 2;
-    let excl_sq = (CAVE_CENTER_EXCLUSION * CAVE_CENTER_EXCLUSION) as i32;
+    let excl_sq = (cave_center_exclusion * cave_center_exclusion) as i32;
     for y in 0..GRID_H {
         for x in 0..GRID_W {
             let dx = x as i32 - cx as i32;
@@ -221,7 +228,7 @@ pub fn generate_terrain(rng: &mut impl Rng) -> WorldMap {
     }
 
     // Step 4: Threshold to logical wall grid
-    let mut walls: Vec<bool> = density.iter().map(|&d| d > TERRAIN_ISO_LEVEL).collect();
+    let mut walls: Vec<bool> = density.iter().map(|&d| d > terrain_iso_level).collect();
 
     // Step 5: BFS flood-fill from center — unreachable open cells become walls
     let start_idx = cy * GRID_W + cx;
@@ -297,17 +304,25 @@ pub fn generate_terrain(rng: &mut impl Rng) -> WorldMap {
 }
 
 /// Bevy startup system: generate terrain and insert WorldMap resource.
-pub fn terrain_startup_system(mut commands: Commands) {
+pub fn terrain_startup_system(mut commands: Commands, config: Res<SimConfig>) {
     let mut rng = rand::thread_rng();
-    let world_map = generate_terrain(&mut rng);
+    let world_map = generate_terrain(
+        &mut rng,
+        config.fbm_scale,
+        config.fbm_layers,
+        config.terrain_iso_level,
+        config.cave_center_exclusion,
+    );
     commands.insert_resource(world_map);
 }
 
-/// Plugin that registers the terrain generation startup system.
+/// Plugin that registers pheromone and ant update systems.
+/// Startup is handled by main.rs OnEnter(Running) to support restart.
 pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Startup, terrain_startup_system);
+    fn build(&self, _app: &mut App) {
+        // terrain_startup_system is registered in main.rs OnEnter(AppState::Running)
+        // so it re-runs on every restart.
     }
 }

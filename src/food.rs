@@ -2,7 +2,9 @@ use bevy::prelude::*;
 use rand::Rng;
 use crate::config::*;
 use crate::ant::{Ant, AntState};
+use crate::sim_config::SimConfig;
 use crate::terrain::WorldMap;
+use crate::SimEntity;
 
 /// Food component: represents a food source with remaining units
 #[derive(Component)]
@@ -47,11 +49,12 @@ pub fn setup_food_assets(
 
 /// Ant-Food interaction: when a Searching ant is within FOOD_INTERACTION_RADIUS of a Food entity,
 /// the ant picks up 1 unit of food and switches to Returning state. If the food source is depleted,
-/// it despawns and a respawn timer is spawned.
+/// it despawns and a respawn timer is spawned (unless food_respawns is disabled).
 pub fn food_interaction_system(
     mut commands: Commands,
     mut food_query: Query<(Entity, &mut Food, &Transform)>,
     mut ant_query: Query<(&Transform, &mut Ant)>,
+    config: Res<SimConfig>,
 ) {
     for (ant_transform, mut ant) in ant_query.iter_mut() {
         // Only Searching ants interact with food
@@ -78,12 +81,14 @@ pub fn food_interaction_system(
                 // Ant switches to Returning state
                 ant.state = AntState::Returning;
 
-                // If food source is depleted, despawn it and spawn respawn timer
+                // If food source is depleted, despawn it and optionally spawn respawn timer
                 if food.units == 0 {
                     commands.entity(food_entity).despawn();
-                    commands.spawn(FoodRespawnTimer {
-                        timer: Timer::from_seconds(FOOD_RESPAWN_DELAY, TimerMode::Once),
-                    });
+                    if config.food_respawns {
+                        commands.spawn(FoodRespawnTimer {
+                            timer: Timer::from_seconds(config.food_respawn_delay, TimerMode::Once),
+                        });
+                    }
                 }
 
                 // Only one food pickup per ant per frame
@@ -132,6 +137,7 @@ pub fn food_respawn_system(
     mut timer_query: Query<(Entity, &mut FoodRespawnTimer)>,
     world_map: Res<WorldMap>,
     food_assets: Res<FoodAssets>,
+    config: Res<SimConfig>,
     time: Res<Time>,
 ) {
     let mut rng = rand::thread_rng();
@@ -153,7 +159,7 @@ pub fn food_respawn_system(
             let gy = cell_idx / GRID_W;
             let pos = crate::terrain::grid_to_world(gx, gy);
 
-            spawn_food(&mut commands, &food_assets, pos);
+            spawn_food(&mut commands, &food_assets, pos, config.food_per_source);
         }
     }
 }
@@ -163,9 +169,11 @@ pub fn spawn_food(
     commands: &mut Commands,
     assets: &FoodAssets,
     pos: Vec2,
+    food_per_source: u32,
 ) {
     commands.spawn((
-        Food { units: FOOD_PER_SOURCE },
+        SimEntity,
+        Food { units: food_per_source },
         Mesh2d(assets.mesh.clone()),
         MeshMaterial2d(assets.material.clone()),
         Transform::from_translation(pos.extend(3.0)), // z=3: above terrain, pheromone, ants
@@ -180,6 +188,7 @@ pub fn spawn_nest(
     pos: Vec2,
 ) {
     commands.spawn((
+        SimEntity,
         Nest,
         Mesh2d(meshes.add(Circle::new(18.0))),
         MeshMaterial2d(materials.add(ColorMaterial::from(Color::srgb(0.55, 0.27, 0.07)))),

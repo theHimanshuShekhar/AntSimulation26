@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use rand::{Rng, SeedableRng};
 use crate::config::*;
 use crate::pheromone::{PheromoneGrid, PheromoneKind};
+use crate::sim_config::SimConfig;
 use crate::terrain::WorldMap;
 use crate::FoodPositions;
 
@@ -179,6 +180,7 @@ pub fn ant_behavior_system(
     time: Res<Time>,
     food_positions: Res<FoodPositions>,
     nest_pos: Res<crate::NestPosition>,
+    config: Res<SimConfig>,
     mut rng: Local<Option<rand::rngs::SmallRng>>,
 ) {
     // Initialize RNG on first call
@@ -255,8 +257,8 @@ pub fn ant_behavior_system(
 
         // 7. Move forward
         let (move_cos, move_sin) = (ant.angle.cos(), ant.angle.sin());
-        let dx = move_cos * ANT_SPEED * dt;
-        let dy = move_sin * ANT_SPEED * dt;
+        let dx = move_cos * config.ant_speed * dt;
+        let dy = move_sin * config.ant_speed * dt;
         let new_pos = pos + Vec2::new(dx, dy);
 
         // 8. Wall + boundary collision
@@ -295,7 +297,7 @@ pub fn ant_behavior_system(
                 // Reverse of movement direction = direction back along the trail
                 let (cos_a, sin_a) = (ant.angle.cos(), ant.angle.sin());
                 let trail_dir = Vec2::new(-cos_a, -sin_a);
-                deposits.0.push((grid_idx, deposit_kind, DEPOSIT_STRENGTH, trail_dir));
+                deposits.0.push((grid_idx, deposit_kind, config.deposit_strength, trail_dir));
             }
         }
     }

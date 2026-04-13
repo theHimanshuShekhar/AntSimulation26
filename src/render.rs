@@ -4,7 +4,9 @@ use bevy::render::render_asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
 use crate::config::*;
 use crate::pheromone::{PheromoneGrid, PheromoneOverlay};
+use crate::sim_config::SimConfig;
 use crate::terrain::{WorldMap, marching_squares_mesh};
+use crate::SimEntity;
 
 /// Startup system: build the marching squares terrain mesh and spawn it at z=0.
 /// Must run after terrain_startup_system so WorldMap is available.
@@ -13,9 +15,11 @@ pub fn setup_terrain_mesh(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     world_map: Res<WorldMap>,
+    config: Res<SimConfig>,
 ) {
-    let mesh = marching_squares_mesh(&world_map.density);
+    let mesh = marching_squares_mesh(&world_map.density, config.terrain_iso_level);
     commands.spawn((
+        SimEntity,
         Mesh2d(meshes.add(mesh)),
         MeshMaterial2d(materials.add(ColorMaterial::from(Color::srgb(0.25, 0.22, 0.18)))),
         Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)), // z=0: terrain is bottommost
@@ -45,6 +49,7 @@ pub fn setup_pheromone_overlay(
     let texture_handle = images.add(image);
 
     commands.spawn((
+        SimEntity,
         Sprite {
             image: texture_handle.clone(),
             custom_size: Some(Vec2::new(WINDOW_W, WINDOW_H)),
@@ -73,18 +78,11 @@ pub fn pheromone_overlay_toggle_system(
 }
 
 /// Plugin that registers rendering systems.
+/// Startup systems are registered in main.rs OnEnter(AppState::Running) to support restart.
 pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_systems(
-                Startup,
-                (
-                    setup_terrain_mesh.after(crate::terrain::terrain_startup_system),
-                    setup_pheromone_overlay.after(crate::terrain::terrain_startup_system),
-                ),
-            )
-            .add_systems(Update, pheromone_overlay_toggle_system);
+        app.add_systems(Update, pheromone_overlay_toggle_system);
     }
 }

@@ -11,6 +11,7 @@ dev = [
 
 [dependencies]
 bevy = { version = "0.15", default-features = false, features = [
+    "bevy_state",
     "bevy_winit",
     "bevy_core_pipeline",
     "bevy_render",
@@ -22,6 +23,7 @@ bevy = { version = "0.15", default-features = false, features = [
     "multi_threaded",
     "webgl2",
 ] }
+bevy_egui = "0.33"
 bytemuck = { version = "1", features = ["derive"] }
 rand = { version = "0.8", features = ["small_rng"] }
 
